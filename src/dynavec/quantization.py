@@ -92,24 +92,24 @@ class ProductQuantizer:
 
     # ----------------------------------------------------------------- encode
     def encode(self, vectors: np.ndarray) -> np.ndarray:
-        self._check_fitted()
+        codebooks, dsub = self._fitted_state()
         x = np.asarray(vectors, dtype=np.float32)
         if x.ndim == 1:
             x = x.reshape(1, -1)
         codes = np.empty((x.shape[0], self.m), dtype=np.uint8)
         for j in range(self.m):
-            sub = x[:, j * self._dsub : (j + 1) * self._dsub]
-            d = ((sub[:, None, :] - self._codebooks[j][None, :, :]) ** 2).sum(axis=2)
+            sub = x[:, j * dsub : (j + 1) * dsub]
+            d = ((sub[:, None, :] - codebooks[j][None, :, :]) ** 2).sum(axis=2)
             codes[:, j] = d.argmin(axis=1)
         return codes
 
     def decode(self, codes: np.ndarray) -> np.ndarray:
         """Approximate reconstruction from codes."""
-        self._check_fitted()
+        codebooks, dsub = self._fitted_state()
         codes = np.atleast_2d(codes)
-        out = np.empty((codes.shape[0], self.m * self._dsub), dtype=np.float32)
+        out = np.empty((codes.shape[0], self.m * dsub), dtype=np.float32)
         for j in range(self.m):
-            out[:, j * self._dsub : (j + 1) * self._dsub] = self._codebooks[j][codes[:, j]]
+            out[:, j * dsub : (j + 1) * dsub] = codebooks[j][codes[:, j]]
         return out
 
     # --------------------------------------------------------------- distance
@@ -119,14 +119,14 @@ class ProductQuantizer:
         Precomputes a per-subspace distance table so scoring N codes is a few
         table lookups — the reason PQ is fast at scale.
         """
-        self._check_fitted()
+        codebooks, dsub = self._fitted_state()
         q = np.asarray(query, dtype=np.float32).reshape(-1)
         codes = np.atleast_2d(codes)
         # distance table: (m, ksub)
         table = np.empty((self.m, self.ksub), dtype=np.float32)
         for j in range(self.m):
-            qsub = q[j * self._dsub : (j + 1) * self._dsub]
-            table[j] = ((self._codebooks[j] - qsub) ** 2).sum(axis=1)
+            qsub = q[j * dsub : (j + 1) * dsub]
+            table[j] = ((codebooks[j] - qsub) ** 2).sum(axis=1)
         # sum table lookups across subspaces
         dists = np.zeros(codes.shape[0], dtype=np.float32)
         for j in range(self.m):
@@ -151,21 +151,25 @@ class ProductQuantizer:
         RuntimeError
             If the quantizer has not been .fit() yet.
         """
-        self._check_fitted()
-        payload = {
-            "format_version": np.array(FORMAT_VERSION, dtype=np.int32),
-            "m": np.array(self.m, dtype=np.int32),
-            "nbits": np.array(self.nbits, dtype=np.int32),
-            "iters": np.array(self.iters, dtype=np.int32),
-            "seed": np.array(self.seed, dtype=np.int32),
-            "dsub": np.array(self._dsub, dtype=np.int32),
-            "codebooks": self._codebooks,
-        }
+        codebooks, dsub = self._fitted_state()
+
+        def write_payload(target: BinaryIO) -> None:
+            np.savez(
+                target,
+                format_version=np.array(FORMAT_VERSION, dtype=np.int32),
+                m=np.array(self.m, dtype=np.int32),
+                nbits=np.array(self.nbits, dtype=np.int32),
+                iters=np.array(self.iters, dtype=np.int32),
+                seed=np.array(self.seed, dtype=np.int32),
+                dsub=np.array(dsub, dtype=np.int32),
+                codebooks=codebooks,
+            )
+
         if isinstance(file, (str, Path)):
             with open(file, "wb") as f:
-                np.savez(f, **payload)
+                write_payload(f)
         else:
-            np.savez(file, **payload)
+            write_payload(file)
 
     @classmethod
     def load(cls, file: str | Path | BinaryIO) -> ProductQuantizer:
@@ -212,10 +216,10 @@ class ProductQuantizer:
         except Exception as exc:
             raise ValueError(f"Failed to load ProductQuantizer: {exc}") from exc
 
-    def _check_fitted(self) -> None:
-        if self._codebooks is None:
+    def _fitted_state(self) -> tuple[np.ndarray, int]:
+        if self._codebooks is None or self._dsub is None:
             raise RuntimeError("ProductQuantizer must be .fit() before use")
-
+        return self._codebooks, self._dsub
 
 
 @dataclass

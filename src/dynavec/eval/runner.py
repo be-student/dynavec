@@ -63,7 +63,7 @@ class EvalRunner:
 
     def run(
         self,
-        dataset: Sequence[dict[str, Any] | tuple[str, str | Sequence[str], str]],
+        dataset: Sequence[dict[str, Any] | Sequence[Any]],
         run_faithfulness: bool = True,
         run_answer_relevance: bool = True,
     ) -> EvalSummary:

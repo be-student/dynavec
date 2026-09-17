@@ -125,7 +125,7 @@ class DynamoDBStore:
         botocore_config = config.botocore_config()
         if botocore_config is not None:
             resource_kwargs["config"] = botocore_config
-        self._ddb = session.resource("dynamodb", **resource_kwargs)  # type: ignore[arg-type]
+        self._ddb = session.resource("dynamodb", **resource_kwargs)
         self._table = self._ddb.Table(config.table)
         self._logger = logging.getLogger("dynavec.stores.dynamodb")
 
@@ -182,7 +182,7 @@ class DynamoDBStore:
 
         for start in range(0, len(keys), _BATCH_GET_LIMIT):
             chunk = keys[start : start + _BATCH_GET_LIMIT]
-            request = {self._config.table: {"Keys": chunk}}
+            request: dict[str, Any] | None = {self._config.table: {"Keys": chunk}}
             while request:
                 resp = self._ddb.batch_get_item(RequestItems=request)
                 for item in resp["Responses"].get(self._config.table, []):

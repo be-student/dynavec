@@ -222,7 +222,7 @@ class DynamoDBCache(BaseCache):
         botocore_config = config.botocore_config()
         if botocore_config is not None:
             resource_kwargs["config"] = botocore_config
-        self._table = session.resource("dynamodb", **resource_kwargs).Table(config.table)  # type: ignore[arg-type]
+        self._table = session.resource("dynamodb", **resource_kwargs).Table(config.table)
         self.ttl_seconds = ttl_seconds
         self.ttl_jitter_seconds = ttl_jitter_seconds
 

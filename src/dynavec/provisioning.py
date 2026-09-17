@@ -10,6 +10,8 @@ Everything is safe to call repeatedly; existing resources are left as-is.
 
 from __future__ import annotations
 
+from typing import Any
+
 from .config import TEXT_METADATA_KEY, DynavecConfig
 from .exceptions import ProvisioningError
 
@@ -26,7 +28,7 @@ def ensure_vector_bucket(config: DynavecConfig, boto_session=None) -> None:
     botocore_config = config.botocore_config()
     if botocore_config is not None:
         client_kwargs["config"] = botocore_config
-    s3v = session.client("s3vectors", **client_kwargs)  # type: ignore[arg-type]
+    s3v = session.client("s3vectors", **client_kwargs)
     try:
         s3v.create_vector_bucket(vectorBucketName=config.vector_bucket)
     except Exception as exc:  # noqa: BLE001
@@ -43,7 +45,7 @@ def ensure_index(config: DynavecConfig, boto_session=None) -> None:
     botocore_config = config.botocore_config()
     if botocore_config is not None:
         client_kwargs["config"] = botocore_config
-    s3v = session.client("s3vectors", **client_kwargs)  # type: ignore[arg-type]
+    s3v = session.client("s3vectors", **client_kwargs)
 
     non_filterable = list(config.non_filterable_keys)
     if config.store_text_in_s3vectors and TEXT_METADATA_KEY not in non_filterable:
@@ -75,10 +77,10 @@ def ensure_table(config: DynavecConfig, boto_session=None) -> None:
     botocore_config = config.botocore_config()
     if botocore_config is not None:
         client_kwargs["config"] = botocore_config
-    ddb = session.client("dynamodb", **client_kwargs)  # type: ignore[arg-type]
+    ddb = session.client("dynamodb", **client_kwargs)
 
     try:
-        create_kwargs = {
+        create_kwargs: dict[str, Any] = {
             "TableName": config.table,
             "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
             "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],

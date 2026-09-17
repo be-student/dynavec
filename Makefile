@@ -1,10 +1,10 @@
 # dynavec developer commands. Run `make help` to see everything.
 #
-# These wrap the exact tools CI uses (uv + ruff + pytest), so `make run-ci`
+# These wrap the exact tools CI uses (uv + ruff + mypy + pytest), so `make run-ci`
 # locally is the same pipeline that runs on your PR.
 
 .DEFAULT_GOAL := help
-.PHONY: help install install-all format lint check test test-live docs clean run-ci
+.PHONY: help install install-all format lint typecheck check test test-live docs clean run-ci
 
 PY_DIRS := src benchmarks tests
 CI_DIRS := src benchmarks           # what CI lints (keep in sync with .github/workflows/ci.yml)
@@ -26,7 +26,10 @@ format:  ## Auto-format and fix lint issues (ruff format + ruff --fix)
 lint:  ## Lint without changing files (mirrors CI exactly)
 	uv run --no-sync ruff check $(CI_DIRS)
 
-check: lint  ## Quick health check (lint, no tests)
+typecheck:  ## Check package annotations with mypy
+	uv run --no-sync mypy
+
+check: lint typecheck  ## Quick health check (lint + types, no tests)
 
 test:  ## Run the unit test suite (offline, no AWS needed)
 	uv run --no-sync pytest -q
@@ -37,8 +40,9 @@ test-live:  ## Run the opt-in end-to-end test against real AWS (costs money)
 docs:  ## Regenerate the static docs site into opensource/dynavec/docs/
 	uv run --no-sync python tools/build_docs.py
 
-run-ci:  ## Run the full CI pipeline locally (lint + test)
+run-ci:  ## Run the full CI pipeline locally (lint + types + test)
 	$(MAKE) lint
+	$(MAKE) typecheck
 	$(MAKE) test
 
 clean:  ## Remove caches and build artifacts

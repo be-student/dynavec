@@ -70,11 +70,13 @@ def composite_score(
     if not weights:
         raise ValueError("weights must be non-empty")
     total = 0.0
-    acc = None
+    acc: np.ndarray | None = None
     for metric, w in weights.items():
         s = normalize_scores(score(query, mat, metric))
         acc = s * w if acc is None else acc + s * w
         total += w
+    if acc is None:  # Defensive guard for unusual mapping implementations.
+        raise ValueError("weights must be non-empty")
     return acc / (total or 1.0)
 
 
@@ -84,7 +86,7 @@ def rescore(
     spec: Metric | dict[str, float],
     *,
     normalize: bool = False,
-) -> np.ndarray:
+) -> tuple[np.ndarray, np.ndarray]:
     """Return an ordering (indices, best first) for the candidates under ``spec``.
 
     ``spec`` is a metric name or a ``{metric: weight}`` combination.

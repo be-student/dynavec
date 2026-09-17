@@ -9,7 +9,7 @@ from __future__ import annotations
 import base64
 import json
 from pathlib import Path
-from typing import BinaryIO
+from typing import Any, BinaryIO
 
 from .base import Embedder, Vector
 
@@ -52,6 +52,7 @@ class BedrockEmbedder(Embedder):
         self._is_cohere = model_id.startswith("cohere.")
 
     def _invoke(self, text: str, input_type: str) -> Vector:
+        body: dict[str, Any]
         if self._is_titan:
             body = {"inputText": text}
             if self._requested_dim is not None:

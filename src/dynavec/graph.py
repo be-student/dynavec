@@ -171,7 +171,7 @@ class GraphStore:
         botocore_config = config.botocore_config()
         if botocore_config is not None:
             resource_kwargs["config"] = botocore_config
-        self._ddb = session.resource("dynamodb", **resource_kwargs)  # type: ignore[arg-type]
+        self._ddb = session.resource("dynamodb", **resource_kwargs)
         self._table = self._ddb.Table(config.table)
 
     @staticmethod

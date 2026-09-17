@@ -48,7 +48,7 @@ class S3VectorsStore:
         botocore_config = config.botocore_config()
         if botocore_config is not None:
             client_kwargs["config"] = botocore_config
-        self._client = session.client("s3vectors", **client_kwargs)  # type: ignore[arg-type]
+        self._client = session.client("s3vectors", **client_kwargs)
         self._logger = logging.getLogger("dynavec.stores.s3vectors")
 
     def get_index(self) -> dict:

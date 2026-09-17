@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TextIO, Union
@@ -211,9 +211,10 @@ class Dynavec:
                     "Some documents have no vector and no embedder is configured. "
                     "Pass an embedder to Dynavec(...) or provide precomputed vectors."
                 )
-            texts = [t for _, t in to_embed]
-            if any(t is None for t in texts):
+            optional_texts = [t for _, t in to_embed]
+            if any(t is None for t in optional_texts):
                 raise ConfigurationError("A document has neither text nor vector.")
+            texts = [t for t in optional_texts if t is not None]
             vectors = self.embedder.embed_documents(texts)
             for (idx, _), vec in zip(to_embed, vectors):
                 docs[idx].vector = vec
@@ -221,9 +222,14 @@ class Dynavec:
         # 3) validate + build payloads
         s3_payload, ddb_payload, ids, hot_payload = [], [], [], []
         for d in docs:
-            if len(d.vector) != self.config.dimension:
+            vector = d.vector
+            if vector is None:
+                raise ConfigurationError(
+                    f"Embedder did not return a vector for document {d.id!r}."
+                )
+            if len(vector) != self.config.dimension:
                 raise DimensionMismatchError(
-                    f"Document {d.id!r} vector has dimension {len(d.vector)}, "
+                    f"Document {d.id!r} vector has dimension {len(vector)}, "
                     f"expected {self.config.dimension}."
                 )
             meta = dict(d.metadata)
@@ -234,12 +240,12 @@ class Dynavec:
             s3_meta, ddb_meta = split_metadata(meta, self.config, namespace, d.text)
             # fail before either store is written, not partway through a batch
             check_item_size(namespace, d.id, d.text, ddb_meta)
-            s3_payload.append((self._s3_key(namespace, d.id), d.vector, s3_meta))
+            s3_payload.append((self._s3_key(namespace, d.id), vector, s3_meta))
             ddb_payload.append((d.id, d.text, ddb_meta))
             ids.append(d.id)
             # Hot tier keeps the full (merged) metadata + text so warmed
             # namespaces need neither an S3 query nor a DynamoDB read.
-            hot_payload.append((d.id, d.vector, d.text, meta))
+            hot_payload.append((d.id, vector, d.text, meta))
         return s3_payload, ddb_payload, ids, hot_payload
 
     def _write(self, namespace: str, s3_payload: list, ddb_payload: list) -> None:
@@ -252,7 +258,7 @@ class Dynavec:
 
     def upsert(
         self,
-        documents: list[Document | dict] | None = None,
+        documents: Sequence[Document | dict[str, Any]] | None = None,
         *,
         namespace: str = "default",
         auto_metadata: bool = False,
@@ -299,7 +305,7 @@ class Dynavec:
         new_vector = vector
         if new_vector is None:
             if text is not None and self.embedder is not None:
-                new_vector = self.embedder.embed_documents([new_text])[0]
+                new_vector = self.embedder.embed_documents([text])[0]
             else:
                 fetched = self._vectors.get_vectors([self._s3_key(namespace, id)])
                 got = fetched.get(self._s3_key(namespace, id))

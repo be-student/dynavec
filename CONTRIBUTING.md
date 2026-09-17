@@ -35,7 +35,7 @@ source .venv/bin/activate          # Windows: .venv\Scripts\Activate.ps1
 make install                       # editable install with dev + ingest extras
 
 # 4. Verify everything works
-make check                         # lint
+make check                         # lint + static type checks
 make test                          # run the offline test suite
 
 # 5. See every available command
@@ -52,9 +52,10 @@ AI agents working in this repo should use the standardized `make` targets:
 ```bash
 make help            # See all available targets
 make install         # Install dev environment (editable)
-make check           # Quick health check (lint)
+make check           # Quick health check (lint + static type checks)
+make typecheck       # Run mypy across the package
 make test            # Run all unit tests (offline)
-make run-ci          # Full CI pipeline locally (lint + test)
+make run-ci          # Full CI pipeline locally (lint + types + test)
 make format          # Auto-format and fix lint issues
 make docs            # Regenerate the static docs site
 make clean           # Remove caches and build artifacts
@@ -139,10 +140,12 @@ pre-commit run --all-files          # run across the whole tree once
 | `make install` | Editable install with dev + ingest extras |
 | `make install-all` | Editable install with **all** extras |
 | `make format` | Auto-format (`ruff format`) and auto-fix lint (`ruff --fix`) |
-| `make lint` / `make check` | Lint with ruff — mirrors CI exactly |
+| `make lint` | Lint with ruff |
+| `make typecheck` | Type-check the package with mypy |
+| `make check` | Run lint and static type checks |
 | `make test` | Run the offline unit suite (`pytest -q`) |
 | `make test-live` | Opt-in end-to-end test against **real AWS** (costs money) |
-| `make run-ci` | The full CI pipeline locally: lint + test |
+| `make run-ci` | The full CI pipeline locally: lint + types + test |
 | `make docs` | Regenerate the static docs site |
 | `make clean` | Remove caches and build artifacts |
 
@@ -160,7 +163,7 @@ git checkout -b feat/your-feature    # branch off development
 # ... make changes ...
 
 make format                          # tidy up
-make check                           # lint
+make check                           # lint + static type checks
 make test                            # verify
 ```
 
@@ -205,9 +208,10 @@ uv run --no-sync pytest tests/test_cache.py -k "jitter" -v
 
 - **Style/linting:** [ruff](https://docs.astral.sh/ruff/) (config in `pyproject.toml`, rule
   sets `E, F, I, UP, B`, line length 100). `make format` fixes most issues automatically.
-- **Type hints:** dynavec ships a `py.typed` marker — please add type hints to new public APIs.
-- **CI** (`.github/workflows/ci.yml`) runs on every push/PR: **ruff + pytest across Python
-  3.9, 3.11, and 3.12**. `make run-ci` reproduces it locally.
+- **Type hints:** dynavec ships a `py.typed` marker. Mypy checks the package in a dedicated
+  CI job; run it locally with `make typecheck`.
+- **CI** (`.github/workflows/ci.yml`) runs on every push/PR: **mypy**, plus ruff and
+  pytest across Python 3.9, 3.11, and 3.12. `make run-ci` reproduces it locally.
 
 ---
 
@@ -233,7 +237,7 @@ ci: add Python 3.13 to the matrix
 **Review checklist:**
 
 - [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make check`)
+- [ ] Lint and static type checks pass (`make check`)
 - [ ] New/changed behavior has tests
 - [ ] Docs updated where relevant
 

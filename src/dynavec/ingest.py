@@ -122,7 +122,7 @@ class DocxSource:
         self._document_cls = docx.Document
 
     def __iter__(self) -> Iterator[Record]:
-        doc = self._document_cls(self._path)
+        doc = self._document_cls(str(self._path))
         paragraphs = [p.text.strip() for p in doc.paragraphs if p.text and p.text.strip()]
         if not paragraphs:
             return
@@ -156,7 +156,7 @@ class PptxSource:
         self._presentation_cls = Presentation
 
     def __iter__(self) -> Iterator[Record]:
-        prs = self._presentation_cls(self._path)
+        prs = self._presentation_cls(str(self._path))
         path_str = self._path.as_posix()
 
         for slide_num, slide in enumerate(prs.slides, start=1):
