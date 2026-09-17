@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import re
 from collections import deque
-from typing import Any
+from typing import Any, cast
 
 from .config import DynavecConfig
 from .utils import (
@@ -162,7 +162,7 @@ _RENDERERS = {"mermaid": _render_mermaid, "dot": _render_dot}
 class GraphStore:
     """DynamoDB-backed property graph sharing the dynavec document table."""
 
-    def __init__(self, config: DynavecConfig, boto_session=None) -> None:
+    def __init__(self, config: DynavecConfig, boto_session: Any | None = None) -> None:
         import boto3
 
         session = boto_session or boto3.Session()
@@ -289,9 +289,10 @@ class GraphStore:
 
     # ------------------------------------------------------------------ reads
     @retry()
-    def get_node(self, ns: str, entity_id: str) -> dict | None:
+    def get_node(self, ns: str, entity_id: str) -> dict[str, Any] | None:
         resp = self._table.get_item(Key={"pk": self._node_pk(ns, entity_id)})
-        return resp.get("Item")
+        item = resp.get("Item")
+        return cast(dict[str, Any], item) if item is not None else None
 
     def neighbors(self, ns: str, entity_id: str, relation: str | None = None) -> list[str]:
         node = self.get_node(ns, entity_id)

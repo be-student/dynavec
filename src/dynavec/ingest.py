@@ -17,7 +17,7 @@ consumes it. Tools and prompts primitives can be adapted the same way.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -25,6 +25,7 @@ from typing import Any
 from .client import Dynavec
 from .exceptions import MissingDependencyError
 from .models import Document
+from .transforms import Transform, TransformPipeline
 from .utils import chunked
 
 Metadata = dict[str, Any]
@@ -60,7 +61,7 @@ def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 150) -> Iterato
 class IterableSource:
     """Wrap a list/iterable of records or dicts as a Source."""
 
-    def __init__(self, records: Iterable) -> None:
+    def __init__(self, records: Iterable[Record | dict[str, Any]]) -> None:
         self._records = records
 
     def __iter__(self) -> Iterator[Record]:
@@ -391,12 +392,16 @@ class MCPResourceSource:
         Optional predicate ``(uri) -> bool`` to select which resources to pull.
     """
 
-    def __init__(self, session, uri_filter=None) -> None:
+    def __init__(
+        self,
+        session: Any,
+        uri_filter: Callable[[str], bool] | None = None,
+    ) -> None:
         self._session = session
         self._uri_filter = uri_filter
 
     @staticmethod
-    def _extract_text(contents) -> str:
+    def _extract_text(contents: Any) -> str:
         # MCP read_resource returns an object/list of content parts; grab text.
         parts = getattr(contents, "contents", contents)
         if isinstance(parts, (list, tuple)):
@@ -435,14 +440,14 @@ class MCPResourceSource:
 
 def ingest(
     db: Dynavec,
-    source: Iterable,
+    source: Iterable[Record | dict[str, Any]],
     *,
     namespace: str = "default",
     chunk_size: int = 1000,
     overlap: int = 150,
     batch_size: int = 256,
     auto_metadata: bool = True,
-    transform=None,
+    transform: TransformPipeline | Transform | Iterable[Transform] | None = None,
 ) -> int:
     """Pull records from ``source``, chunk, embed, and upsert. Returns #chunks.
 

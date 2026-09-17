@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Callable
+from typing import Any
 
 from .client import Dynavec
 from .config import DynavecConfig
@@ -212,7 +214,7 @@ def _import(args: argparse.Namespace) -> int:
 		return 1
 
 
-def _check(label: str, callback) -> bool:
+def _check(label: str, callback: Callable[[], str]) -> bool:
 	try:
 		detail = callback()
 	except Exception as exc:  # noqa: BLE001

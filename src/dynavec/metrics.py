@@ -14,6 +14,8 @@ All scorers return **higher = more similar** so they compose cleanly.
 
 from __future__ import annotations
 
+from typing import cast
+
 import numpy as np
 
 Metric = str  # "cosine" | "dot" | "euclidean" | "manhattan"
@@ -34,13 +36,13 @@ def score(query: np.ndarray, mat: np.ndarray, metric: Metric) -> np.ndarray:
     if metric == "cosine":
         qn = q / (np.linalg.norm(q) + 1e-12)
         mn = m / (np.linalg.norm(m, axis=1, keepdims=True) + 1e-12)
-        return mn @ qn
+        return cast(np.ndarray, mn @ qn)
     if metric == "euclidean":
         d = np.linalg.norm(m - q, axis=1)
-        return 1.0 / (1.0 + d)
+        return cast(np.ndarray, 1.0 / (1.0 + d))
     if metric == "manhattan":
         d = np.abs(m - q).sum(axis=1)
-        return 1.0 / (1.0 + d)
+        return cast(np.ndarray, 1.0 / (1.0 + d))
     raise ValueError(f"unknown metric {metric!r}; expected one of {_VALID}")
 
 

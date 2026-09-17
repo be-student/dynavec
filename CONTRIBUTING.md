@@ -141,7 +141,7 @@ pre-commit run --all-files          # run across the whole tree once
 | `make install-all` | Editable install with **all** extras |
 | `make format` | Auto-format (`ruff format`) and auto-fix lint (`ruff --fix`) |
 | `make lint` | Lint with ruff |
-| `make typecheck` | Type-check the package with mypy |
+| `make typecheck` | Type-check the package with mypy's strict mode |
 | `make check` | Run lint and static type checks |
 | `make test` | Run the offline unit suite (`pytest -q`) |
 | `make test-live` | Opt-in end-to-end test against **real AWS** (costs money) |
@@ -208,8 +208,8 @@ uv run --no-sync pytest tests/test_cache.py -k "jitter" -v
 
 - **Style/linting:** [ruff](https://docs.astral.sh/ruff/) (config in `pyproject.toml`, rule
   sets `E, F, I, UP, B`, line length 100). `make format` fixes most issues automatically.
-- **Type hints:** dynavec ships a `py.typed` marker. Mypy checks the package in a dedicated
-  CI job; run it locally with `make typecheck`.
+- **Type hints:** dynavec ships a `py.typed` marker. Mypy checks the package in strict mode
+  in a dedicated CI job; run it locally with `make typecheck`.
 - **CI** (`.github/workflows/ci.yml`) runs on every push/PR: **mypy**, plus ruff and
   pytest across Python 3.9, 3.11, and 3.12. `make run-ci` reproduces it locally.
 

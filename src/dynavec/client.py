@@ -27,10 +27,12 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TextIO, Union
+from types import TracebackType
+from typing import TYPE_CHECKING, Any, Optional, TextIO, Union
 
 if TYPE_CHECKING:
     from .cache import BaseCache

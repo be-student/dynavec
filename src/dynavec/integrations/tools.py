@@ -9,10 +9,11 @@ adapters for OpenAI Assistants, LangChain, and CrewAI.
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
-from typing import Any, Callable
+from collections.abc import Callable, Sequence
+from typing import Any
 
 from ..client import Dynavec
+from ..models import SearchResult
 from ..namespace import NamespaceView
 from ..retrievers import QueryExpansionRetriever
 
@@ -22,8 +23,8 @@ def make_retriever_fn(
     *,
     top_k: int = 4,
     namespace: str = "default",
-    filter: dict | None = None,
-    rescore=None,
+    filter: dict[str, Any] | None = None,
+    rescore: str | dict[str, float] | None = None,
     join: str = "\n\n",
     include_scores: bool = False,
 ) -> Callable[[str], str]:
@@ -35,7 +36,7 @@ def make_retriever_fn(
     if isinstance(source, QueryExpansionRetriever) and rescore is not None:
         raise ValueError("rescore is not supported with query-expansion retrievers")
 
-    def _search(query: str):
+    def _search(query: str) -> list[SearchResult]:
         if isinstance(source, QueryExpansionRetriever):
             return source.search(query, top_k=top_k, filter=filter)
         if isinstance(source, NamespaceView):

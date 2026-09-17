@@ -116,7 +116,7 @@ class DynamoDBStore:
 
     _logger = logging.getLogger("dynavec.stores.dynamodb")
 
-    def __init__(self, config: DynavecConfig, boto_session=None) -> None:
+    def __init__(self, config: DynavecConfig, boto_session: Any | None = None) -> None:
         import boto3  # local import: base import stays cheap
 
         session = boto_session or boto3.Session()

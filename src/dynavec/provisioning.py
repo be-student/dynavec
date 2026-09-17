@@ -10,17 +10,18 @@ Everything is safe to call repeatedly; existing resources are left as-is.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from .config import TEXT_METADATA_KEY, DynavecConfig
 from .exceptions import ProvisioningError
 
 
 def _client_error_code(exc: Exception) -> str:
-    return getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+    response = cast(dict[str, Any], getattr(exc, "response", {}))
+    return str(response.get("Error", {}).get("Code", ""))
 
 
-def ensure_vector_bucket(config: DynavecConfig, boto_session=None) -> None:
+def ensure_vector_bucket(config: DynavecConfig, boto_session: Any | None = None) -> None:
     import boto3
 
     session = boto_session or boto3.Session()
@@ -37,7 +38,7 @@ def ensure_vector_bucket(config: DynavecConfig, boto_session=None) -> None:
         raise ProvisioningError(f"Failed to create vector bucket: {exc}") from exc
 
 
-def ensure_index(config: DynavecConfig, boto_session=None) -> None:
+def ensure_index(config: DynavecConfig, boto_session: Any | None = None) -> None:
     import boto3
 
     session = boto_session or boto3.Session()
@@ -69,7 +70,7 @@ def ensure_index(config: DynavecConfig, boto_session=None) -> None:
         raise ProvisioningError(f"Failed to create vector index: {exc}") from exc
 
 
-def ensure_table(config: DynavecConfig, boto_session=None) -> None:
+def ensure_table(config: DynavecConfig, boto_session: Any | None = None) -> None:
     import boto3
 
     session = boto_session or boto3.Session()
@@ -101,7 +102,7 @@ def ensure_table(config: DynavecConfig, boto_session=None) -> None:
     ddb.get_waiter("table_exists").wait(TableName=config.table)
 
 
-def provision_all(config: DynavecConfig, boto_session=None) -> None:
+def provision_all(config: DynavecConfig, boto_session: Any | None = None) -> None:
     """Create every resource dynavec needs. Idempotent."""
     ensure_vector_bucket(config, boto_session)
     ensure_index(config, boto_session)

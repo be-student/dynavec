@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import threading
 from collections import OrderedDict
+from collections.abc import Callable
 from typing import Any
 
 from .config import DynavecConfig
@@ -27,7 +28,7 @@ from .spfresh import SPFreshConfig, SPFreshHotIndex
 
 # --- MongoDB-style metadata matcher (mirrors the S3 Vectors filter dialect) ---
 
-_COMPARATORS = {
+_COMPARATORS: dict[str, Callable[[Any, Any], bool]] = {
     "$eq": lambda a, b: a == b,
     "$ne": lambda a, b: a != b,
     "$gt": lambda a, b: a is not None and a > b,

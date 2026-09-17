@@ -39,7 +39,7 @@ def _f32(vector: list[float]) -> list[float]:
 class S3VectorsStore:
     _logger = logging.getLogger("dynavec.stores.s3vectors")
 
-    def __init__(self, config: DynavecConfig, boto_session=None) -> None:
+    def __init__(self, config: DynavecConfig, boto_session: Any | None = None) -> None:
         import boto3  # local import: base import stays cheap
 
         session = boto_session or boto3.Session()
@@ -58,7 +58,7 @@ class S3VectorsStore:
         )
 
     @retry()
-    def _put_batch(self, payload: list[dict]) -> None:
+    def _put_batch(self, payload: list[dict[str, Any]]) -> None:
         self._client.put_vectors(
             vectorBucketName=self._config.vector_bucket,
             indexName=self._config.index,
@@ -89,7 +89,12 @@ class S3VectorsStore:
         )
 
     def _query_kwargs(
-        self, query_vector, top_k, filter, return_metadata, return_distance
+        self,
+        query_vector: list[float],
+        top_k: int,
+        filter: Metadata | None,
+        return_metadata: bool,
+        return_distance: bool,
     ) -> dict[str, Any]:
         kwargs: dict[str, Any] = {
             "vectorBucketName": self._config.vector_bucket,

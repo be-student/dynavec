@@ -14,26 +14,36 @@ vectors directly (no re-embedding).
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ..client import Dynavec
 from ..exceptions import MissingDependencyError
 from ..models import Document as DVDocument
 
-try:
+if TYPE_CHECKING:
     from llama_index.core.schema import BaseNode, TextNode
-    from llama_index.core.vector_stores.types import (
-        BasePydanticVectorStore,
-        VectorStoreQuery,
-        VectorStoreQueryResult,
-    )
-except ImportError as exc:  # pragma: no cover - import guard
-    raise MissingDependencyError(
-        "DynavecLlamaStore", "llama-index-core", "all"
-    ) from exc
+    from llama_index.core.vector_stores.types import VectorStoreQuery, VectorStoreQueryResult
+
+    class _BasePydanticVectorStore:
+        """Typing boundary for the optional LlamaIndex base class."""
+
+else:
+    try:
+        from llama_index.core.schema import BaseNode, TextNode
+        from llama_index.core.vector_stores.types import (
+            BasePydanticVectorStore as _BasePydanticVectorStore,
+        )
+        from llama_index.core.vector_stores.types import (
+            VectorStoreQuery,
+            VectorStoreQueryResult,
+        )
+    except ImportError as exc:  # pragma: no cover - import guard
+        raise MissingDependencyError(
+            "DynavecLlamaStore", "llama-index-core", "all"
+        ) from exc
 
 
-class DynavecLlamaStore(BasePydanticVectorStore):
+class DynavecLlamaStore(_BasePydanticVectorStore):
     """Minimal LlamaIndex vector store backed by a :class:`Dynavec` client."""
 
     stores_text: bool = True

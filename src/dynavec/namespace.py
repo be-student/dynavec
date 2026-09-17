@@ -8,9 +8,10 @@ separated on the same infrastructure.
 
 from __future__ import annotations
 
+from collections.abc import Iterator, Sequence
 from typing import TYPE_CHECKING, Any
 
-from .models import SearchResult
+from .models import Document, SearchResult, UpsertResult
 
 if TYPE_CHECKING:
     from .client import Dynavec
@@ -29,23 +30,29 @@ class NamespaceView:
     def namespace(self) -> str:
         return self._ns
 
-    def upsert(self, documents, **kw) -> Any:
+    def upsert(
+        self,
+        documents: Sequence[Document | dict[str, Any]] | None,
+        **kw: Any,
+    ) -> UpsertResult:
         return self._db.upsert(documents, namespace=self._ns, **kw)
 
-    def update(self, *args, **kw) -> Any:
-        return self._db.update(*args, namespace=self._ns, **kw)
+    def update(self, id: str, **kw: Any) -> UpsertResult:
+        return self._db.update(id, namespace=self._ns, **kw)
 
-    def search(self, query: str | None = None, **kw) -> list[SearchResult]:
+    def search(self, query: str | None = None, **kw: Any) -> list[SearchResult]:
         return self._db.search(query, namespace=self._ns, **kw)
 
-    def search_stream(self, query: str | None = None, **kw):
+    def search_stream(
+        self, query: str | None = None, **kw: Any
+    ) -> Iterator[SearchResult]:
         yield from self._db.search_stream(query, namespace=self._ns, **kw)
 
-    def get(self, ids, **kw) -> list[SearchResult]:
+    def get(self, ids: list[str], **kw: Any) -> list[SearchResult]:
         return self._db.get(ids, namespace=self._ns, **kw)
 
-    def delete(self, ids, **kw) -> None:
-        return self._db.delete(ids, namespace=self._ns, **kw)
+    def delete(self, ids: list[str], **kw: Any) -> None:
+        self._db.delete(ids, namespace=self._ns, **kw)
 
     def as_multiquery_retriever(
         self, generate_queries=None, *, llm_generate_queries=None, **kw
