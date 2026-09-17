@@ -12,31 +12,19 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from ..client import Dynavec
 from ..exceptions import MissingDependencyError
 
-if TYPE_CHECKING:
+try:
+    import dspy
     from dspy.dsp.utils import dotdict
-
-    class _RetrieveBase:
-        """Typing boundary for the optional DSPy base class."""
-
-        k: int
-
-        def __init__(self, k: int) -> None: ...
-
-else:
-    try:
-        import dspy
-        from dspy.dsp.utils import dotdict
-    except ImportError as exc:  # pragma: no cover - import guard
-        raise MissingDependencyError("DynavecRM", "dspy", "dspy") from exc
-    _RetrieveBase = dspy.Retrieve
+except ImportError as exc:  # pragma: no cover - import guard
+    raise MissingDependencyError("DynavecRM", "dspy", "dspy") from exc
 
 
-class DynavecRM(_RetrieveBase):
+class DynavecRM(dspy.Retrieve):
     """DSPy retrieval module backed by a :class:`Dynavec` client."""
 
     def __init__(

@@ -86,8 +86,10 @@ class EvalRunner:
                 q = str(item.get("query", ""))
                 c = item.get("context", [])
                 a = str(item.get("answer", ""))
+            elif isinstance(item, (tuple, list)) and len(item) >= 3:
+                q, c, a = item[0], item[1], item[2]
             else:
-                q, c, a = item
+                continue
 
             res = self.evaluate_sample(
                 query=q,

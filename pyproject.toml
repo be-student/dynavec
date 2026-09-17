@@ -113,7 +113,8 @@ ignore = ["E501"]
 
 [tool.mypy]
 python_version = "3.12"
-files = ["src/dynavec"]
+files = ["src/dynavec", "tests/typing"]
+mypy_path = "typings"
 strict = true
 pretty = true
 show_error_codes = true

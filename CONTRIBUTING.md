@@ -65,7 +65,9 @@ make clean           # Remove caches and build artifacts
 
 - Prefer `make` targets over invoking tools directly — they match CI exactly.
 - For direct tool calls, use the `uv run --no-sync` prefix (plain `uv run` can trigger a
-  universal resolve that pulls yanked optional deps).
+  universal resolve that pulls yanked optional deps). Install the `langchain`,
+  `llamaindex`, and `dspy` extras before type-checking so adapter inheritance is checked
+  against the real framework APIs.
 - Run `make run-ci` before declaring a change complete; it is the same pipeline CI runs.
 - Prefer editing existing files over creating new ones, and follow the conventions in
   neighboring modules.

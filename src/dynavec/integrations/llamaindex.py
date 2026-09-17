@@ -14,36 +14,28 @@ vectors directly (no re-embedding).
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from collections.abc import Sequence
+from typing import Any
 
 from ..client import Dynavec
 from ..exceptions import MissingDependencyError
 from ..models import Document as DVDocument
 
-if TYPE_CHECKING:
+try:
     from llama_index.core.schema import BaseNode, TextNode
-    from llama_index.core.vector_stores.types import VectorStoreQuery, VectorStoreQueryResult
-
-    class _BasePydanticVectorStore:
-        """Typing boundary for the optional LlamaIndex base class."""
-
-else:
-    try:
-        from llama_index.core.schema import BaseNode, TextNode
-        from llama_index.core.vector_stores.types import (
-            BasePydanticVectorStore as _BasePydanticVectorStore,
-        )
-        from llama_index.core.vector_stores.types import (
-            VectorStoreQuery,
-            VectorStoreQueryResult,
-        )
-    except ImportError as exc:  # pragma: no cover - import guard
-        raise MissingDependencyError(
-            "DynavecLlamaStore", "llama-index-core", "all"
-        ) from exc
+    from llama_index.core.vector_stores.types import (
+        BasePydanticVectorStore,
+        MetadataFilter,
+        VectorStoreQuery,
+        VectorStoreQueryResult,
+    )
+except ImportError as exc:  # pragma: no cover - import guard
+    raise MissingDependencyError(
+        "DynavecLlamaStore", "llama-index-core", "all"
+    ) from exc
 
 
-class DynavecLlamaStore(_BasePydanticVectorStore):
+class DynavecLlamaStore(BasePydanticVectorStore):
     """Minimal LlamaIndex vector store backed by a :class:`Dynavec` client."""
 
     stores_text: bool = True
@@ -53,7 +45,7 @@ class DynavecLlamaStore(_BasePydanticVectorStore):
     _namespace: str
 
     def __init__(self, client: Dynavec, namespace: str = "default") -> None:
-        super().__init__()
+        super().__init__(stores_text=True)
         self._client = client
         self._namespace = namespace
 
@@ -61,7 +53,7 @@ class DynavecLlamaStore(_BasePydanticVectorStore):
     def client(self) -> Any:
         return self._client
 
-    def add(self, nodes: list[BaseNode], **kwargs: Any) -> list[str]:
+    def add(self, nodes: Sequence[BaseNode], **kwargs: Any) -> list[str]:
         docs = []
         for node in nodes:
             meta = node.metadata or {}
@@ -83,7 +75,12 @@ class DynavecLlamaStore(_BasePydanticVectorStore):
     def query(self, query: VectorStoreQuery, **kwargs: Any) -> VectorStoreQueryResult:
         flt = None
         if query.filters is not None:
-            flt = {f.key: f.value for f in query.filters.filters}
+            simple_filters: list[MetadataFilter] = []
+            for metadata_filter in query.filters.filters:
+                if not isinstance(metadata_filter, MetadataFilter):
+                    raise ValueError("Nested LlamaIndex metadata filters are not supported.")
+                simple_filters.append(metadata_filter)
+            flt = {f.key: f.value for f in simple_filters}
 
         results = self._client.search(
             vector=query.query_embedding,

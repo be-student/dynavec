@@ -1,0 +1,9 @@
+from typing import Any
+
+class Retrieve:
+    k: int
+    callbacks: list[Any]
+
+    def __init__(self, k: int = ..., callbacks: list[Any] | None = ...) -> None: ...
+    def __call__(self, *args: Any, **kwargs: Any) -> Any: ...
+    def forward(self, query: str, k: int | None = ..., **kwargs: Any) -> Any: ...

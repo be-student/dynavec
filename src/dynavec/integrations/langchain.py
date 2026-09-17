@@ -15,25 +15,18 @@ from __future__ import annotations
 import asyncio
 import uuid
 from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import Any, Protocol
 
 from ..client import Dynavec
 from ..embeddings.base import Embedder
 from ..exceptions import MissingDependencyError
 from ..models import Document as DVDocument
 
-if TYPE_CHECKING:
+try:
     from langchain_core.documents import Document as LCDocument
-
-    class _VectorStoreBase:
-        """Typing boundary for the optional LangChain base class."""
-
-else:
-    try:
-        from langchain_core.documents import Document as LCDocument
-        from langchain_core.vectorstores import VectorStore as _VectorStoreBase
-    except ImportError as exc:  # pragma: no cover - import guard
-        raise MissingDependencyError("DynavecVectorStore", "langchain-core", "langchain") from exc
+    from langchain_core.vectorstores import VectorStore
+except ImportError as exc:  # pragma: no cover - import guard
+    raise MissingDependencyError("DynavecVectorStore", "langchain-core", "langchain") from exc
 
 
 class _LCEmbeddings(Protocol):
@@ -56,7 +49,7 @@ class _LCEmbeddingsAdapter(Embedder):
         return self._lc.embed_query(text)
 
 
-class DynavecVectorStore(_VectorStoreBase):
+class DynavecVectorStore(VectorStore):
     """A thin LangChain VectorStore backed by a :class:`Dynavec` client."""
 
     def __init__(self, client: Dynavec, namespace: str = "default") -> None:
