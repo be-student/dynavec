@@ -57,7 +57,12 @@ def _pk(namespace: str, doc_id: str) -> str:
     return f"{encode_key_component(namespace)}{KEY_SEPARATOR}{encode_key_component(doc_id)}"
 
 
-def _build_item(namespace: str, doc_id: str, text: str | None, metadata: Metadata) -> dict:
+def _build_item(
+    namespace: str,
+    doc_id: str,
+    text: str | None,
+    metadata: Metadata,
+) -> dict[str, Any]:
     item = {
         "pk": _pk(namespace, doc_id),
         "ns": namespace,
@@ -91,7 +96,7 @@ def _value_size(value: Any) -> int:
     return len(str(value).encode("utf-8"))
 
 
-def item_size_bytes(item: dict) -> int:
+def item_size_bytes(item: dict[str, Any]) -> int:
     """Approximate DynamoDB size of ``item``: attribute name bytes plus value sizes."""
     return sum(len(name.encode("utf-8")) + _value_size(value) for name, value in item.items())
 
@@ -105,7 +110,7 @@ def check_item_size(namespace: str, doc_id: str, text: str | None, metadata: Met
     _check_built_item(_build_item(namespace, doc_id, text, metadata))
 
 
-def _check_built_item(item: dict) -> None:
+def _check_built_item(item: dict[str, Any]) -> None:
     size = item_size_bytes(item)
     if size > MAX_ITEM_BYTES:
         raise ItemTooLargeError(item["id"], item["ns"], size, MAX_ITEM_BYTES)

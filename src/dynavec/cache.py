@@ -369,7 +369,7 @@ def warm_cache(
     *,
     namespace: str = "default",
     top_k: int = 10,
-    **search_kwargs,
+    **search_kwargs: Any,
 ) -> int:
     """Pre-populate the query cache from a list of common queries.
 

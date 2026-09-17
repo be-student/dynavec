@@ -226,21 +226,20 @@ class ProductQuantizer:
 class ScalarQuantizer:
     """Per-dimension INT8 scalar quantization."""
 
-    def __post_init__(self):
-        self._mins = None
-        self._scales = None
+    def __post_init__(self) -> None:
+        self._mins: np.ndarray | None = None
+        self._scales: np.ndarray | None = None
 
     @property
-    def is_fitted(self):
-        return self._mins is not None
+    def is_fitted(self) -> bool:
+        return self._mins is not None and self._scales is not None
 
     @property
-    def code_size_bytes(self):
-        if self._mins is None:
-            raise RuntimeError("ScalarQuantizer is not fitted")
-        return self._mins.shape[0]
+    def code_size_bytes(self) -> int:
+        mins, _ = self._fitted_state()
+        return int(mins.shape[0])
 
-    def fit(self, vectors):
+    def fit(self, vectors: np.ndarray) -> ScalarQuantizer:
         vectors = np.asarray(vectors, dtype=np.float32)
 
         if vectors.ndim != 2:
@@ -257,8 +256,8 @@ class ScalarQuantizer:
 
         return self
 
-    def encode(self, vectors):
-        self._check_fitted()
+    def encode(self, vectors: np.ndarray) -> np.ndarray:
+        mins, scales = self._fitted_state()
 
         vectors = np.asarray(vectors, dtype=np.float32)
 
@@ -266,30 +265,32 @@ class ScalarQuantizer:
             raise ValueError("vectors must be a 2D array")
 
         codes = np.round(
-            (vectors - self._mins) / self._scales - 128
+            (vectors - mins) / scales - 128
         )
 
-        return np.clip(codes, -128, 127).astype(np.int8)
+        return np.asarray(np.clip(codes, -128, 127), dtype=np.int8)
 
-    def decode(self, codes):
-        self._check_fitted()
+    def decode(self, codes: np.ndarray) -> np.ndarray:
+        mins, scales = self._fitted_state()
 
         codes = np.asarray(codes, dtype=np.int8)
 
-        return (
-            (codes.astype(np.float32) + 128) * self._scales
-            + self._mins
-        ).astype(np.float32)
+        return np.asarray(
+            (codes.astype(np.float32) + 128) * scales
+            + mins,
+            dtype=np.float32,
+        )
 
-    def reconstruction_error(self, vectors):
+    def reconstruction_error(self, vectors: np.ndarray) -> float:
         vectors = np.asarray(vectors, dtype=np.float32)
         reconstructed = self.decode(self.encode(vectors))
 
         return float(np.mean((vectors - reconstructed) ** 2))
 
-    def _check_fitted(self):
-        if not self.is_fitted:
+    def _fitted_state(self) -> tuple[np.ndarray, np.ndarray]:
+        if self._mins is None or self._scales is None:
             raise RuntimeError("ScalarQuantizer must be .fit() before use")
+        return self._mins, self._scales
 
 
 @dataclass
@@ -332,25 +333,26 @@ class OPQRotation:
 
     def transform(self, vectors: np.ndarray) -> np.ndarray:
         """Apply the learned rotation."""
-        self._check_fitted()
+        rotation = self._fitted_rotation()
 
         x = np.asarray(vectors, dtype=np.float32)
 
-        return x @ self._rotation
+        return np.asarray(x @ rotation, dtype=np.float32)
 
     def inverse_transform(self, vectors: np.ndarray) -> np.ndarray:
         """Apply the inverse rotation."""
-        self._check_fitted()
+        rotation = self._fitted_rotation()
 
         x = np.asarray(vectors, dtype=np.float32)
 
-        return x @ self._rotation.T
+        return np.asarray(x @ rotation.T, dtype=np.float32)
 
-    def _check_fitted(self) -> None:
-        if not self.is_fitted:
+    def _fitted_rotation(self) -> np.ndarray:
+        if self._rotation is None:
             raise RuntimeError(
                 "OPQRotation must be .fit() before use"
             )
+        return self._rotation
 
 
     def _update_rotation(
@@ -388,8 +390,8 @@ class OptimizedProductQuantizer:
 
     @property
     def code_size_bytes(self) -> int:
-        self._check_fitted()
-        return self._pq.code_size_bytes
+        pq, _ = self._fitted_components()
+        return pq.code_size_bytes
 
     def fit(self, vectors: np.ndarray) -> OptimizedProductQuantizer:
         x = np.asarray(vectors, dtype=np.float32)
@@ -442,31 +444,31 @@ class OptimizedProductQuantizer:
         return self
 
     def encode(self, vectors: np.ndarray) -> np.ndarray:
-        self._check_fitted()
+        pq, opq = self._fitted_components()
 
-        rotated = self._opq.transform(vectors)
+        rotated = opq.transform(vectors)
 
-        return self._pq.encode(rotated)
+        return pq.encode(rotated)
 
     def decode(self, codes: np.ndarray) -> np.ndarray:
-        self._check_fitted()
+        pq, opq = self._fitted_components()
 
-        rotated = self._pq.decode(codes)
+        rotated = pq.decode(codes)
 
-        return self._opq.inverse_transform(rotated)
+        return opq.inverse_transform(rotated)
 
     def asymmetric_distances(
         self,
         query: np.ndarray,
         codes: np.ndarray,
     ) -> np.ndarray:
-        self._check_fitted()
+        pq, opq = self._fitted_components()
 
-        rotated_query = self._opq.transform(
+        rotated_query = opq.transform(
             np.asarray(query, dtype=np.float32)
         )
 
-        return self._pq.asymmetric_distances(
+        return pq.asymmetric_distances(
             rotated_query,
             codes,
         )
@@ -489,8 +491,9 @@ class OptimizedProductQuantizer:
         """PQ reconstruction error after each OPQ iteration."""
         return self._training_errors.copy()
 
-    def _check_fitted(self) -> None:
-        if not self.is_fitted:
+    def _fitted_components(self) -> tuple[ProductQuantizer, OPQRotation]:
+        if self._pq is None or self._opq is None:
             raise RuntimeError(
                 "OptimizedProductQuantizer must be .fit() before use"
             )
+        return self._pq, self._opq

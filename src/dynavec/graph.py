@@ -333,7 +333,7 @@ class GraphStore:
         return sorted(entity_id for entity_id, _ in self._scan_nodes(ns, "pk, entity_id"))
 
     @retry()
-    def _scan_nodes(self, ns: str, projection: str) -> list[tuple[str, dict]]:
+    def _scan_nodes(self, ns: str, projection: str) -> list[tuple[str, dict[str, Any]]]:
         """``(entity_id, item)`` for every node in ``ns``, following pagination."""
         prefix = f"{encode_key_component(ns)}{KEY_SEPARATOR}node{KEY_SEPARATOR}"
         params: dict[str, Any] = {
@@ -341,7 +341,7 @@ class GraphStore:
             "ExpressionAttributeValues": {":prefix": prefix},
             "ProjectionExpression": projection,
         }
-        nodes: list[tuple[str, dict]] = []
+        nodes: list[tuple[str, dict[str, Any]]] = []
         while True:
             resp = self._table.scan(**params)
             for item in resp.get("Items", []):

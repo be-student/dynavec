@@ -95,7 +95,7 @@ class Dynavec:
         self._graph_store: GraphStore | None = None
         self._pool: ThreadPoolExecutor | None = None
         self._hot: HotTier | None = HotTier(config) if config.hot_tier else None
-        self._cross_encoder = None
+        self._cross_encoder: Any | None = None
 
         if embedder is not None and embedder.dimension != config.dimension:
             raise ConfigurationError(
@@ -486,8 +486,8 @@ class Dynavec:
             results = self._apply_rescore(query_vector, results, rescore)
         if rerank == "mmr":
             results = maximal_marginal_relevance(
-                results,
                 query_vector,
+                results,
                 top_k=top_k,
                 lambda_mult=mmr_lambda,
             )
@@ -580,11 +580,13 @@ class Dynavec:
                 "rerank",
             ) from exc
 
-        if self._cross_encoder is None:
-            self._cross_encoder = CrossEncoder(self.config.cross_encoder_model)
+        cross_encoder = self._cross_encoder
+        if cross_encoder is None:
+            cross_encoder = CrossEncoder(self.config.cross_encoder_model)
+            self._cross_encoder = cross_encoder
 
         pairs = [(query, result.text) for result in results]
-        scores = self._cross_encoder.predict(pairs)
+        scores = cross_encoder.predict(pairs)
 
         reranked = sorted(
             zip(results, scores),
