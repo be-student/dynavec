@@ -1,4 +1,5 @@
 import dspy
+from dspy.predict.parameter import Parameter
 from langchain_core.vectorstores import VectorStore
 from llama_index.core.vector_stores.types import BasePydanticVectorStore
 
@@ -13,6 +14,12 @@ def use_langchain(store: DynavecVectorStore) -> VectorStore:
 
 
 def use_dspy(retriever: DynavecRM) -> dspy.Retrieve:
+    retriever.reset()
+    retriever.load_state(retriever.dump_state())
+    return retriever
+
+
+def use_dspy_parameter(retriever: DynavecRM) -> Parameter:
     return retriever
 
 

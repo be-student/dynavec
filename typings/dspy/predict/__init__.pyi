@@ -1,2 +1,1 @@
 from dspy.predict.parameter import Parameter as Parameter
-from dspy.retrievers.retrieve import Retrieve as Retrieve

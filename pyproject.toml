@@ -53,6 +53,13 @@ langchain = ["langchain-core>=0.3"]
 llamaindex = ["llama-index-core>=0.11"]
 crewai = ["crewai>=0.70,!=1.14.0; python_version >= '3.10'"]
 dspy = ["dspy>=3.3; python_version >= '3.10'"]
+# Framework APIs imported by strict mypy checks. Keep this in sync with the
+# integration adapters covered by tests/typing.
+typecheck = [
+    "langchain-core>=0.3",
+    "llama-index-core>=0.11",
+    "dspy>=3.3; python_version >= '3.10'",
+]
 all = [
     "openai>=1.40",
     "google-generativeai>=0.8",

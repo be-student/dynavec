@@ -13,8 +13,8 @@ help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
-install:  ## Install dynavec + dev tools in editable mode (recommended)
-	uv pip install -e ".[dev,ingest]"
+install:  ## Install dynavec + dev, ingest, and type-check dependencies (recommended)
+	uv pip install -e ".[dev,ingest,typecheck]"
 
 install-all:  ## Install everything: all embedders, adapters, and dev tools
 	uv pip install -e ".[all,ingest,dev]"
