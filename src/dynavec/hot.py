@@ -29,14 +29,14 @@ from .spfresh import SPFreshConfig, SPFreshHotIndex
 # --- MongoDB-style metadata matcher (mirrors the S3 Vectors filter dialect) ---
 
 _COMPARATORS: dict[str, Callable[[Any, Any], bool]] = {
-    "$eq": lambda a, b: a == b,
-    "$ne": lambda a, b: a != b,
-    "$gt": lambda a, b: a is not None and a > b,
-    "$gte": lambda a, b: a is not None and a >= b,
-    "$lt": lambda a, b: a is not None and a < b,
-    "$lte": lambda a, b: a is not None and a <= b,
-    "$in": lambda a, b: a in b,
-    "$nin": lambda a, b: a not in b,
+    "$eq": lambda a, b: bool(a == b),
+    "$ne": lambda a, b: bool(a != b),
+    "$gt": lambda a, b: bool(a is not None and a > b),
+    "$gte": lambda a, b: bool(a is not None and a >= b),
+    "$lt": lambda a, b: bool(a is not None and a < b),
+    "$lte": lambda a, b: bool(a is not None and a <= b),
+    "$in": lambda a, b: bool(a in b),
+    "$nin": lambda a, b: bool(a not in b),
 }
 
 
@@ -58,7 +58,7 @@ def _match_field(value: Any, condition: Any) -> bool:
             if not cmp(value, operand):
                 return False
         return True
-    return value == condition  # bare {k: v} means equality
+    return bool(value == condition)  # bare {k: v} means equality
 
 
 def matches(metadata: dict[str, Any], flt: dict[str, Any] | None) -> bool:

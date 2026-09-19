@@ -43,9 +43,7 @@ class NamespaceView:
     def search(self, query: str | None = None, **kw: Any) -> list[SearchResult]:
         return self._db.search(query, namespace=self._ns, **kw)
 
-    def search_stream(
-        self, query: str | None = None, **kw: Any
-    ) -> Iterator[SearchResult]:
+    def search_stream(self, query: str | None = None, **kw: Any) -> Iterator[SearchResult]:
         yield from self._db.search_stream(query, namespace=self._ns, **kw)
 
     def get(self, ids: list[str], **kw: Any) -> list[SearchResult]:
@@ -55,8 +53,8 @@ class NamespaceView:
         self._db.delete(ids, namespace=self._ns, **kw)
 
     def as_multiquery_retriever(
-        self, generate_queries=None, *, llm_generate_queries=None, **kw
-    ):
+        self, generate_queries: Any = None, *, llm_generate_queries: Any = None, **kw: Any
+    ) -> Any:
         """Create a :class:`~dynavec.retrievers.MultiQueryRetriever` pinned to this namespace."""
         from .retrievers import MultiQueryRetriever
 
@@ -68,8 +66,8 @@ class NamespaceView:
         )
 
     def as_hyde_retriever(
-        self, generate_hypothetical=None, *, llm_generate_hypothetical=None, **kw
-    ):
+        self, generate_hypothetical: Any = None, *, llm_generate_hypothetical: Any = None, **kw: Any
+    ) -> Any:
         """Create a :class:`~dynavec.retrievers.HyDERetriever` pinned to this namespace."""
         from .retrievers import HyDERetriever
 
@@ -79,13 +77,14 @@ class NamespaceView:
             llm_generate_hypothetical=llm_generate_hypothetical,
             **kw,
         )
-    def export_namespace(self, output, **kw) -> int:
+
+    def export_namespace(self, output: Any, **kw: Any) -> int:
         return self._db.export_namespace(output, namespace=self._ns, **kw)
 
-    def import_namespace(self, input, **kw) -> int:
+    def import_namespace(self, input: Any, **kw: Any) -> int:
         return self._db.import_namespace(input, namespace=self._ns, **kw)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[dict[str, Any]]:
         return self._db.iter_namespace(namespace=self._ns)
 
     def __repr__(self) -> str:

@@ -156,15 +156,15 @@ class OpenAIAssistantTool:
             if parsed_args is None:
                 query = ""
             elif isinstance(parsed_args, dict):
-                query = parsed_args.get("query")
-                if query is None:
+                query_value: Any = parsed_args.get("query")
+                if query_value is None:
                     for fallback_key in ("q", "input", "search_query", "text", "prompt"):
                         if fallback_key in parsed_args:
-                            query = parsed_args[fallback_key]
+                            query_value = parsed_args[fallback_key]
                             break
-                if query is None and parsed_args:
-                    query = next((v for v in parsed_args.values() if isinstance(v, str)), "")
-                query = str(query or "")
+                if query_value is None and parsed_args:
+                    query_value = next((v for v in parsed_args.values() if isinstance(v, str)), "")
+                query = str(query_value or "")
             elif isinstance(parsed_args, (list, tuple, set)):
                 query = " ".join(str(x) for x in parsed_args)
             else:
@@ -221,7 +221,12 @@ def as_openai_tool(
     return OpenAIAssistantTool(fn, name=name, description=description)
 
 
-def as_langchain_tool(source, *, name: str = "dynavec_search", **kw) -> Any:
+def as_langchain_tool(
+    source: Dynavec | NamespaceView | QueryExpansionRetriever,
+    *,
+    name: str = "dynavec_search",
+    **kw: Any,
+) -> Any:
     """Wrap the retriever as a LangChain ``StructuredTool`` (requires langchain-core)."""
     from ..exceptions import MissingDependencyError
 
@@ -234,7 +239,12 @@ def as_langchain_tool(source, *, name: str = "dynavec_search", **kw) -> Any:
     return StructuredTool.from_function(func=fn, name=name, description=fn.__doc__)
 
 
-def as_crewai_tool(source, *, name: str = "dynavec_search", **kw) -> Any:
+def as_crewai_tool(
+    source: Dynavec | NamespaceView,
+    *,
+    name: str = "dynavec_search",
+    **kw: Any,
+) -> Any:
     """Wrap the retriever as a CrewAI tool (requires crewai)."""
     from ..exceptions import MissingDependencyError
 
@@ -245,9 +255,8 @@ def as_crewai_tool(source, *, name: str = "dynavec_search", **kw) -> Any:
 
     fn = make_retriever_fn(source, **kw)
 
-    @crewai_tool(name)
     def _tool(query: str) -> str:
         """Search the dynavec knowledge base for relevant passages."""
         return fn(query)
 
-    return _tool
+    return crewai_tool(name)(_tool)

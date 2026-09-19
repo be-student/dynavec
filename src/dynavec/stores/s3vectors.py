@@ -51,11 +51,12 @@ class S3VectorsStore:
         self._client = session.client("s3vectors", **client_kwargs)
         self._logger = logging.getLogger("dynavec.stores.s3vectors")
 
-    def get_index(self) -> dict:
-        return self._client.get_index(
+    def get_index(self) -> dict[str, Any]:
+        result: dict[str, Any] = self._client.get_index(
             vectorBucketName=self._config.vector_bucket,
             indexName=self._config.index,
         )
+        return result
 
     @retry()
     def _put_batch(self, payload: list[dict[str, Any]]) -> None:
