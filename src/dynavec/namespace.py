@@ -9,9 +9,9 @@ separated on the same infrastructure.
 from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, cast, overload
 
-from .models import Document, SearchResult, UpsertResult
+from .models import Document, ExplainedSearchResult, SearchResult, UpsertResult
 
 if TYPE_CHECKING:
     from .client import Dynavec
@@ -40,8 +40,25 @@ class NamespaceView:
     def update(self, id: str, **kw: Any) -> UpsertResult:
         return self._db.update(id, namespace=self._ns, **kw)
 
-    def search(self, query: str | None = None, **kw: Any) -> list[SearchResult]:
-        return self._db.search(query, namespace=self._ns, **kw)
+    @overload
+    def search(
+        self, query: str | None = None, *, explain: Literal[False] = False, **kw: Any
+    ) -> list[SearchResult]: ...
+
+    @overload
+    def search(
+        self, query: str | None = None, *, explain: Literal[True], **kw: Any
+    ) -> ExplainedSearchResult: ...
+
+    def search(
+        self, query: str | None = None, *, explain: bool = False, **kw: Any
+    ) -> list[SearchResult] | ExplainedSearchResult:
+        if explain:
+            return cast(
+                ExplainedSearchResult,
+                self._db.search(query, namespace=self._ns, explain=True, **kw),
+            )
+        return cast(list[SearchResult], self._db.search(query, namespace=self._ns, **kw))
 
     def search_stream(self, query: str | None = None, **kw: Any) -> Iterator[SearchResult]:
         yield from self._db.search_stream(query, namespace=self._ns, **kw)
