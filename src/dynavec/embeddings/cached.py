@@ -47,7 +47,14 @@ class CachedEmbedder(Embedder):
         self._inner = inner
         self._cache = cache if cache is not None else InMemoryCache()
         self._model_key = model_key or type(inner).__name__
-        self.dimension = inner.dimension
+
+    @property
+    def dimension(self) -> int:
+        return self._inner.dimension
+
+    @dimension.setter
+    def dimension(self, value: int) -> None:
+        self._inner.dimension = value
 
     def embed_documents(self, texts: list[str]) -> list[Vector]:
         if not texts:

@@ -212,7 +212,14 @@ uv run --no-sync pytest tests/test_cache.py -k "jitter" -v
   sets `E, F, I, UP, B`, line length 100). `make format` fixes most issues automatically.
 - **Type hints:** dynavec ships a `py.typed` marker. Mypy checks the package in strict mode
   against the optional framework APIs in a dedicated CI job. Run `make install` once,
-  then `make typecheck` locally.
+  then `make typecheck` locally. Consumer fixtures in `tests/typing` protect
+  integration inheritance and the `explain` return contract for client, namespace,
+  and batch searches. When adding a return-shape option, cover both literal values
+  and a runtime `bool` across forwarding APIs; do not cast an overloaded callable
+  to a single result shape to satisfy an executor's type inference. Wrapper
+  annotations must also preserve live delegation: an embedder such as Ollama can
+  infer its dimension on the first request, so a cached wrapper must not snapshot
+  that property during construction.
 - **CI** (`.github/workflows/ci.yml`) runs on every push/PR: **mypy**, plus ruff and
   pytest across Python 3.9, 3.11, and 3.12. `make run-ci` reproduces it locally.
 

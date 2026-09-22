@@ -50,6 +50,11 @@ class NamespaceView:
         self, query: str | None = None, *, explain: Literal[True], **kw: Any
     ) -> ExplainedSearchResult: ...
 
+    @overload
+    def search(
+        self, query: str | None = None, *, explain: bool, **kw: Any
+    ) -> list[SearchResult] | ExplainedSearchResult: ...
+
     def search(
         self, query: str | None = None, *, explain: bool = False, **kw: Any
     ) -> list[SearchResult] | ExplainedSearchResult:

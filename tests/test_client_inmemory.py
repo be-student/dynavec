@@ -497,6 +497,26 @@ def test_search_many_parallel(db):
     assert all(len(r) == 1 for r in results)
 
 
+@pytest.mark.parametrize("explain", [False, True])
+def test_search_many_explain_preserves_order_and_namespace(db, explain):
+    ns = db.namespace("kb")
+    ns.upsert([Document(id="1", text="apple"), Document(id="2", text="rocket")])
+    batches = db.search_many(
+        ["rocket", "apple"], namespace="kb", top_k=1, explain=explain,
+        normalize_scores=True,
+    )
+    assert len(batches) == 2
+    for result, expected_id in zip(batches, ["2", "1"]):
+        if explain:
+            assert isinstance(result, ExplainedSearchResult)
+            result = result.results
+        assert isinstance(result, list)
+        assert [hit.id for hit in result] == [expected_id]
+    single = ns.search("apple", explain=explain)
+    assert isinstance(single, ExplainedSearchResult if explain else list)
+    assert db.search_many([], explain=explain) == []
+
+
 def test_context_manager_closes_pool(db):
     with db as d:
         d.upsert([Document(id="1", text="hi")])

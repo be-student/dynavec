@@ -32,7 +32,7 @@ from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from pathlib import Path
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, Literal, Optional, TextIO, Union, cast, overload
+from typing import TYPE_CHECKING, Any, Literal, Optional, TextIO, Union, overload
 
 if TYPE_CHECKING:
     from .cache import BaseCache
@@ -871,20 +871,101 @@ class Dynavec:
                 )
                 yielded += 1
 
+    @overload
     def search_many(
         self,
         queries: list[str],
         *,
         top_k: int = 10,
         namespace: str = "default",
-        **kw: Any,
-    ) -> list[list[SearchResult]]:
-        """Run several queries concurrently (thread pool over I/O-bound calls)."""
-        search = cast(Callable[..., list[SearchResult]], self.search)
-        futures = [
-            self._executor.submit(search, q, top_k=top_k, namespace=namespace, **kw)
-            for q in queries
-        ]
+        explain: Literal[False] = False,
+        vector: list[float] | None = None,
+        filter: Metadata | None = None,
+        rescore: RescoreSpec | None = None,
+        rerank: str | None = None,
+        mmr_lambda: float = 0.5,
+        include_vectors: bool = False,
+        use_cache: bool | None = None,
+        normalize_scores: bool = False,
+    ) -> list[list[SearchResult]]: ...
+
+    @overload
+    def search_many(
+        self,
+        queries: list[str],
+        *,
+        top_k: int = 10,
+        namespace: str = "default",
+        explain: Literal[True],
+        vector: list[float] | None = None,
+        filter: Metadata | None = None,
+        rescore: RescoreSpec | None = None,
+        rerank: str | None = None,
+        mmr_lambda: float = 0.5,
+        include_vectors: bool = False,
+        use_cache: bool | None = None,
+        normalize_scores: bool = False,
+    ) -> list[ExplainedSearchResult]: ...
+
+    @overload
+    def search_many(
+        self,
+        queries: list[str],
+        *,
+        top_k: int = 10,
+        namespace: str = "default",
+        explain: bool,
+        vector: list[float] | None = None,
+        filter: Metadata | None = None,
+        rescore: RescoreSpec | None = None,
+        rerank: str | None = None,
+        mmr_lambda: float = 0.5,
+        include_vectors: bool = False,
+        use_cache: bool | None = None,
+        normalize_scores: bool = False,
+    ) -> list[list[SearchResult]] | list[ExplainedSearchResult]: ...
+
+    def search_many(
+        self,
+        queries: list[str],
+        *,
+        top_k: int = 10,
+        namespace: str = "default",
+        explain: bool = False,
+        vector: list[float] | None = None,
+        filter: Metadata | None = None,
+        rescore: RescoreSpec | None = None,
+        rerank: str | None = None,
+        mmr_lambda: float = 0.5,
+        include_vectors: bool = False,
+        use_cache: bool | None = None,
+        normalize_scores: bool = False,
+    ) -> list[list[SearchResult]] | list[ExplainedSearchResult]:
+        """Run queries concurrently, returning one search result per input query.
+
+        With ``explain=True``, each item is an ``ExplainedSearchResult``.
+        """
+        if explain:
+            def explained_search(query: str) -> ExplainedSearchResult:
+                return self.search(
+                    query, top_k=top_k, namespace=namespace, explain=True,
+                    vector=vector, filter=filter, rescore=rescore, rerank=rerank,
+                    mmr_lambda=mmr_lambda, include_vectors=include_vectors,
+                    use_cache=use_cache, normalize_scores=normalize_scores,
+                )
+
+            explained_futures = [self._executor.submit(explained_search, q) for q in queries]
+            return [f.result() for f in explained_futures]
+
+        def plain_search(query: str) -> list[SearchResult]:
+            return self.search(
+                query, top_k=top_k, namespace=namespace, explain=False,
+                vector=vector, filter=filter, rescore=rescore, rerank=rerank,
+                mmr_lambda=mmr_lambda, include_vectors=include_vectors,
+                use_cache=use_cache, normalize_scores=normalize_scores,
+            )
+
+        futures = [self._executor.submit(plain_search, q) for q in queries]
         return [f.result() for f in futures]
 
     def as_multiquery_retriever(
