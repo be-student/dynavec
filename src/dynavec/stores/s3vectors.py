@@ -33,7 +33,7 @@ _LIST_PAGE_MAX = 1000
 
 def _f32(vector: list[float]) -> list[float]:
     """Ensure vector is float32-clean (S3 Vectors stores float32)."""
-    return np.asarray(vector, dtype=np.float32).tolist()
+    return [float(value) for value in np.asarray(vector, dtype=np.float32)]
 
 
 class S3VectorsStore:

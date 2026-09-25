@@ -154,9 +154,9 @@ class Dynavec:
     def describe(self) -> IndexInfo:
         """Return the live bucket/index/table config, as provisioned in AWS."""
         idx = self._vectors.get_index()["index"]
-        table_desc = self._docs._ddb.meta.client.describe_table(
-            TableName=self.config.table
-        )["Table"]
+        table_desc = self._docs._ddb.meta.client.describe_table(TableName=self.config.table)[
+            "Table"
+        ]
         return IndexInfo(
             vector_bucket=self.config.vector_bucket,
             index=self.config.index,
@@ -216,8 +216,11 @@ class Dynavec:
             for d in docs:
                 ctx = pipeline(
                     TransformContext(
-                        id=d.id, text=d.text, vector=d.vector,
-                        metadata=dict(d.metadata), namespace=namespace,
+                        id=d.id,
+                        text=d.text,
+                        vector=d.vector,
+                        metadata=dict(d.metadata),
+                        namespace=namespace,
                     )
                 )
                 d.text, d.vector, d.metadata = ctx.text, ctx.vector, ctx.metadata
@@ -261,7 +264,7 @@ class Dynavec:
                 meta = auto
             s3_meta, ddb_meta = split_metadata(meta, self.config, namespace, d.text)
             # fail before either store is written, not partway through a batch
-            check_item_size(namespace, d.id, d.text, ddb_meta)
+            check_item_size(namespace, d.id, d.text, ddb_meta, self.config.gzip_threshold_bytes)
             s3_payload.append((self._s3_key(namespace, d.id), vector, s3_meta))
             ddb_payload.append((d.id, d.text, ddb_meta))
             ids.append(d.id)
@@ -535,9 +538,7 @@ class Dynavec:
 
             if explanation is not None:
                 explanation.candidate_counts["final"] = len(results)
-                explanation.timings_ms["total"] = round(
-                    (time.perf_counter() - t0) * 1000, 3
-                )
+                explanation.timings_ms["total"] = round((time.perf_counter() - t0) * 1000, 3)
 
             self._record_search(
                 tel,
@@ -561,12 +562,19 @@ class Dynavec:
             return results
         except Exception as exc:  # noqa: BLE001 - record then re-raise
             if tel is not None:
-                tel.record(tel.new_event(
-                    "search", namespace=namespace, top_k=top_k,
-                    latency_ms=round((time.perf_counter() - t0) * 1000, 3),
-                    status="error", error=str(exc)[:200], filtered=bool(filter),
-                    rescore=self._rescore_label(rescore), rerank=rerank,
-                ))
+                tel.record(
+                    tel.new_event(
+                        "search",
+                        namespace=namespace,
+                        top_k=top_k,
+                        latency_ms=round((time.perf_counter() - t0) * 1000, 3),
+                        status="error",
+                        error=str(exc)[:200],
+                        filtered=bool(filter),
+                        rescore=self._rescore_label(rescore),
+                        rerank=rerank,
+                    )
+                )
             raise
 
     def _search_core(
@@ -649,13 +657,15 @@ class Dynavec:
                 doc = hydrated.get(doc_id, {})
                 vec = (
                     vec_by_key.get(self._s3_key(namespace, doc_id), {}).get("vector")
-                    if vec_by_key else None
+                    if vec_by_key
+                    else None
                 )
                 results.append(
                     SearchResult(
                         id=doc_id,
                         score=distance_to_score(distance, self.config.distance_metric)
-                        if distance is not None else 0.0,
+                        if distance is not None
+                        else 0.0,
                         distance=distance,
                         text=doc.get("text"),
                         metadata=doc.get("metadata", {}),
@@ -682,9 +692,7 @@ class Dynavec:
             )
 
             if explanation is not None:
-                explanation.timings_ms["rerank"] = round(
-                    (time.perf_counter() - stage_t0) * 1000, 3
-                )
+                explanation.timings_ms["rerank"] = round((time.perf_counter() - stage_t0) * 1000, 3)
                 explanation.candidate_counts["reranked"] = len(results)
 
         elif rerank == "cross-encoder":
@@ -696,9 +704,7 @@ class Dynavec:
             )
 
             if explanation is not None:
-                explanation.timings_ms["rerank"] = round(
-                    (time.perf_counter() - stage_t0) * 1000, 3
-                )
+                explanation.timings_ms["rerank"] = round((time.perf_counter() - stage_t0) * 1000, 3)
                 explanation.candidate_counts["reranked"] = len(results)
 
         else:
@@ -743,20 +749,22 @@ class Dynavec:
         if tel is None:
             return
         scores = [r.score for r in results] if results else []
-        tel.record(tel.new_event(
-            "search",
-            namespace=namespace,
-            top_k=top_k,
-            latency_ms=round((time.perf_counter() - t0) * 1000, 3),
-            n_results=len(results),
-            cache_hit=cache_hit,
-            filtered=bool(filter),
-            rescore=self._rescore_label(rescore),
-            rerank=rerank,
-            score_top=round(max(scores), 4) if scores else None,
-            score_mean=round(sum(scores) / len(scores), 4) if scores else None,
-            query_preview=(query[:80] if (query and tel.capture_text) else None),
-        ))
+        tel.record(
+            tel.new_event(
+                "search",
+                namespace=namespace,
+                top_k=top_k,
+                latency_ms=round((time.perf_counter() - t0) * 1000, 3),
+                n_results=len(results),
+                cache_hit=cache_hit,
+                filtered=bool(filter),
+                rescore=self._rescore_label(rescore),
+                rerank=rerank,
+                score_top=round(max(scores), 4) if scores else None,
+                score_mean=round(sum(scores) / len(scores), 4) if scores else None,
+                query_preview=(query[:80] if (query and tel.capture_text) else None),
+            )
+        )
 
     def _apply_rescore(
         self, query_vector: list[float], results: list[SearchResult], spec: RescoreSpec
@@ -787,14 +795,11 @@ class Dynavec:
             )
 
         if any(result.text is None for result in results):
-            raise ConfigurationError(
-                "Cross-encoder reranking requires document text."
-            )
+            raise ConfigurationError("Cross-encoder reranking requires document text.")
 
         try:
             from sentence_transformers import CrossEncoder
         except ImportError as exc:
-
             raise MissingDependencyError(
                 "Cross-encoder reranking",
                 "sentence-transformers",
@@ -864,7 +869,8 @@ class Dynavec:
                 yield SearchResult(
                     id=doc_id,
                     score=distance_to_score(distance, self.config.distance_metric)
-                    if distance is not None else 0.0,
+                    if distance is not None
+                    else 0.0,
                     distance=distance,
                     text=doc.get("text"),
                     metadata=doc.get("metadata", {}),
@@ -1006,9 +1012,7 @@ class Dynavec:
             **kw,
         )
 
-    def _resolve_query_vector(
-        self, query: str | None, vector: list[float] | None
-    ) -> list[float]:
+    def _resolve_query_vector(self, query: str | None, vector: list[float] | None) -> list[float]:
         if vector is not None:
             if len(vector) != self.config.dimension:
                 raise DimensionMismatchError(
@@ -1231,12 +1235,12 @@ class Dynavec:
         if not doc_ids:
             return []
 
-        vec_by_key = self._vectors.get_vectors(
-            [self._s3_key(namespace, d) for d in doc_ids]
-        )
+        vec_by_key = self._vectors.get_vectors([self._s3_key(namespace, d) for d in doc_ids])
         hydrated = self._docs.get_many(namespace, doc_ids)
 
-        scored = [d for d in doc_ids if vec_by_key.get(self._s3_key(namespace, d), {}).get("vector")]
+        scored = [
+            d for d in doc_ids if vec_by_key.get(self._s3_key(namespace, d), {}).get("vector")
+        ]
         if not scored:
             return []
         mat = np.asarray(
@@ -1252,8 +1256,10 @@ class Dynavec:
             doc = hydrated.get(d, {})
             out.append(
                 SearchResult(
-                    id=d, score=float(scores[int(i)]),
-                    text=doc.get("text"), metadata=doc.get("metadata", {}),
+                    id=d,
+                    score=float(scores[int(i)]),
+                    text=doc.get("text"),
+                    metadata=doc.get("metadata", {}),
                 )
             )
         return out
@@ -1302,10 +1308,12 @@ class Dynavec:
     def delete(self, ids: list[str], namespace: str = "default") -> None:
         """Delete documents from both stores (and the hot tier, if enabled)."""
         keys = [self._s3_key(namespace, doc_id) for doc_id in ids]
-        self._run_parallel([
-            lambda: self._vectors.delete_vectors(keys),
-            lambda: self._docs.delete_many(namespace, ids),
-        ])
+        self._run_parallel(
+            [
+                lambda: self._vectors.delete_vectors(keys),
+                lambda: self._docs.delete_many(namespace, ids),
+            ]
+        )
         if self._hot is not None:
             self._hot.delete(namespace, ids)
 
