@@ -16,6 +16,7 @@ consumes it. Tools and prompts primitives can be adapted the same way.
 
 from __future__ import annotations
 
+import datetime
 import hashlib
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
@@ -29,6 +30,24 @@ from .transforms import Transform, TransformPipeline
 from .utils import chunked
 
 Metadata = dict[str, Any]
+
+
+def _normalize_front_matter(value: Any) -> Any:
+    """Recursively normalize parsed YAML front-matter for storage.
+
+    ``yaml.safe_load()`` converts unquoted dates (``date: 2026-09-24``) into
+    ``datetime.date`` / ``datetime.datetime`` objects, which DynamoDB's
+    ``TypeSerializer`` rejects. Convert those to ISO 8601 strings, recurse
+    through mappings and sequences, and leave strings, ints, floats, and
+    booleans untouched.
+    """
+    if isinstance(value, (datetime.datetime, datetime.date)):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {k: _normalize_front_matter(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_normalize_front_matter(v) for v in value]
+    return value
 
 
 @dataclass
@@ -361,7 +380,9 @@ class MarkdownSource:
             metadata = {}
         if not isinstance(metadata, dict) or any(not isinstance(k, str) for k in metadata):
             raise ValueError(f"Front matter in {path} must be a mapping with string keys")
-        return "".join(lines[end + 1 :]), metadata
+        # yaml.safe_load() turns unquoted dates into datetime.date/datetime
+        # objects, which storage backends (e.g. DynamoDB) cannot serialize.
+        return "".join(lines[end + 1 :]), _normalize_front_matter(metadata)
 
     def __iter__(self) -> Iterator[Record]:
         for path in sorted(self.root.glob(self.glob)):

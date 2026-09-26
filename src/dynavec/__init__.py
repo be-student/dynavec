@@ -26,6 +26,7 @@ from .config import DynavecConfig
 from .credentials import AWSCredentials
 from .exceptions import (
     ConfigurationError,
+    ConflictError,
     DimensionMismatchError,
     DynavecError,
     EmbeddingError,
@@ -83,7 +84,7 @@ from .spfresh import (
 )
 from .transforms import LambdaTransform, TransformContext, TransformPipeline
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 __all__ = [
     "Dynavec",
@@ -142,5 +143,6 @@ __all__ = [
     "DimensionMismatchError",
     "NotFoundError",
     "ItemTooLargeError",
+    "ConflictError",
     "MissingDependencyError",
 ]

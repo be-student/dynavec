@@ -24,3 +24,11 @@ def check_search_contracts(db: Dynavec, explain: bool) -> None:
         db.search_many(["q"], explain=explain),
         list[list[SearchResult]] | list[ExplainedSearchResult],
     )
+
+    assert_type(ns.search_many(["q"]), list[list[SearchResult]])
+    assert_type(ns.search_many(["q"], explain=False), list[list[SearchResult]])
+    assert_type(ns.search_many(["q"], explain=True), list[ExplainedSearchResult])
+    assert_type(
+        ns.search_many(["q"], explain=explain),
+        list[list[SearchResult]] | list[ExplainedSearchResult],
+    )

@@ -7,6 +7,7 @@ and dynavec only ever calls them with the caller's credentials.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
@@ -59,6 +60,12 @@ class DynavecConfig:
         Optional botocore ``max_pool_connections`` tuning for DynamoDB and
         S3 Vectors clients. ``None`` (default) keeps boto3/botocore defaults
         (currently 10 connections per client).
+    cache_invalidate_on_write:
+        When a query ``cache`` is configured, evict the affected namespace's
+        cached results after ``upsert``/``update``/``delete`` so writes are
+        never hidden behind stale entries (default True). Disable only if
+        write-side invalidation is expensive for your backend and brief
+        staleness is acceptable.
     """
 
     vector_bucket: str
@@ -100,6 +107,9 @@ class DynavecConfig:
     # document storage tuning
     gzip_threshold_bytes: int | None = None
 
+    # query cache
+    cache_invalidate_on_write: bool = True
+
     # observability
     structured_logging: bool = False
     log_level: str = "INFO"
@@ -123,6 +133,12 @@ class DynavecConfig:
             raise ValueError("distance_metric must be 'cosine' or 'euclidean'")
         if self.over_fetch < 1:
             raise ValueError("over_fetch must be >= 1")
+        if (
+            isinstance(self.max_workers, bool)
+            or not isinstance(self.max_workers, int)
+            or self.max_workers <= 0
+        ):
+            raise ValueError("max_workers must be a positive integer")
         if self.top_k_page_size is not None and self.top_k_page_size <= 0:
             raise ValueError("top_k_page_size must be a positive integer")
         if self.max_pool_connections is not None and self.max_pool_connections <= 0:
@@ -138,3 +154,7 @@ class DynavecConfig:
         valid_log_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
         if self.log_level.upper() not in valid_log_levels:
             raise ValueError(f"log_level must be one of {valid_log_levels}")
+        
+        if self.dimension > 4096:
+            logger = logging.getLogger(__name__)
+            logger.warning("Amazon S3 Vectors currently supports a maximum embedding dimension of 4096. You have configured a dimension of %d. This may result in an API error during provisioning or writing data.", self.dimension)

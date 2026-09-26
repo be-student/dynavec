@@ -9,9 +9,11 @@ Three backends, pick per your infra:
 * :class:`RedisCache`     — shared, sub-millisecond cache on Redis / **AWS
   ElastiCache**, great across many workers/hosts.
 
-All expose the same ``get`` / ``put`` interface, keyed on
-(namespace, query vector, top_k, filter). Use :func:`warm_cache` to pre-populate any
-backend from a list of common queries at startup.
+All expose the same ``get`` / ``put`` / ``invalidate`` interface, keyed on
+(namespace, query vector, top_k, filter). Writes evict the affected
+namespace's entries when ``DynavecConfig.cache_invalidate_on_write`` is on.
+Use :func:`warm_cache` to pre-populate any backend from a list of common
+queries at startup.
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ from __future__ import annotations
 import hashlib
 import json
 import random
+import re
 import sys
 import time
 from abc import ABC, abstractmethod
@@ -40,15 +43,18 @@ CacheEntry = tuple[np.ndarray, list[SearchResult], int]
 
 
 def _signature(namespace: str, top_k: int, filter: MetadataFilter | None) -> str:
-    payload = json.dumps(
-        {"ns": namespace, "k": top_k, "f": filter or {}}, sort_keys=True
-    )
+    payload = json.dumps({"ns": namespace, "k": top_k, "f": filter or {}}, sort_keys=True)
     return hashlib.sha256(payload.encode()).hexdigest()[:24]
 
 
 def _vec_key(query_vector: Sequence[float], ndigits: int = 3) -> str:
     rounded = [round(float(x), ndigits) for x in query_vector]
     return hashlib.sha256(json.dumps(rounded).encode()).hexdigest()[:24]
+
+
+def _glob_escape(value: str) -> str:
+    """Escape Redis glob metacharacters so a namespace is matched literally."""
+    return re.sub(r"([\\*?\[\]^])", r"\\\1", value)
 
 
 def _serialize(results: list[SearchResult]) -> str:
@@ -58,8 +64,11 @@ def _serialize(results: list[SearchResult]) -> str:
 def _deserialize(blob: str) -> list[SearchResult]:
     return [
         SearchResult(
-            id=d["id"], score=d["score"], distance=d.get("distance"),
-            text=d.get("text"), metadata=d.get("metadata", {}),
+            id=d["id"],
+            score=d["score"],
+            distance=d.get("distance"),
+            text=d.get("text"),
+            metadata=d.get("metadata", {}),
         )
         for d in json.loads(blob)
     ]
@@ -77,8 +86,7 @@ def _deep_size(value: object, seen: set[int] | None = None) -> int:
     size = sys.getsizeof(value)
     if isinstance(value, dict):
         return size + sum(
-            _deep_size(key, seen) + _deep_size(item, seen)
-            for key, item in value.items()
+            _deep_size(key, seen) + _deep_size(item, seen) for key, item in value.items()
         )
     if isinstance(value, (list, tuple, set, frozenset)):
         return size + sum(_deep_size(item, seen) for item in value)
@@ -99,8 +107,7 @@ class BaseCache(ABC):
         query_vector: Sequence[float],
         top_k: int,
         filter: MetadataFilter | None,
-    ) -> list[SearchResult] | None:
-        ...
+    ) -> list[SearchResult] | None: ...
 
     @abstractmethod
     def put(
@@ -110,8 +117,16 @@ class BaseCache(ABC):
         top_k: int,
         filter: MetadataFilter | None,
         results: list[SearchResult],
-    ) -> None:
-        ...
+    ) -> None: ...
+
+    def invalidate(self, namespace: str) -> None:
+        """Evict all cached entries for ``namespace`` (best-effort).
+
+        Called by :class:`~dynavec.client.Dynavec` after writes when
+        ``DynavecConfig.cache_invalidate_on_write`` is enabled. The default
+        is a no-op so custom caches written before this hook keep working.
+        """
+        return None
 
     def stats(self) -> dict[str, int | float]:
         """Return cache hit and miss statistics."""
@@ -155,6 +170,9 @@ class SemanticCache(BaseCache):
         self._lru: OrderedDict[tuple[str, str], None] = OrderedDict()
         # key: signature -> OrderedDict[vec_key -> (unit_vec, results, size_bytes)]
         self._buckets: dict[str, OrderedDict[str, CacheEntry]] = {}
+        # signature -> owning namespace (signatures are opaque hashes, so the
+        # namespace is tracked separately to allow per-namespace invalidation)
+        self._sig_ns: dict[str, str] = {}
 
     @property
     def size_bytes(self) -> int:
@@ -213,6 +231,7 @@ class SemanticCache(BaseCache):
         bucket[vk] = (vector, results, entry_size)
         bucket.move_to_end(vk)
         self._lru[(sig, vk)] = None
+        self._sig_ns[sig] = namespace
         self._size_bytes += entry_size
         while len(self._lru) > self.max_size or (
             self.max_bytes is not None and self._size_bytes > self.max_bytes
@@ -223,6 +242,17 @@ class SemanticCache(BaseCache):
             self._size_bytes -= old_size
             if not old_bucket:
                 del self._buckets[old_sig]
+                self._sig_ns.pop(old_sig, None)
+
+    def invalidate(self, namespace: str) -> None:
+        for sig in [s for s, ns in self._sig_ns.items() if ns == namespace]:
+            del self._sig_ns[sig]
+            bucket = self._buckets.pop(sig, None)
+            if not bucket:
+                continue
+            for vk, (_vec, _res, size) in bucket.items():
+                self._lru.pop((sig, vk), None)
+                self._size_bytes -= size
 
 
 class DynamoDBCache(BaseCache):
@@ -233,6 +263,11 @@ class DynamoDBCache(BaseCache):
     ``ttl_jitter_seconds`` adds a random delay of up to the configured number
     of seconds to each expiry, spreading simultaneous writes across an expiry
     window to reduce cache stampedes.
+
+    Invalidation is namespace-scoped via a tiny ``__cachegen__#{ns}`` item:
+    bumping it makes older entries unreachable (they are reaped by TTL). The
+    table only has a HASH ``pk``, so enumerating entries would need a Scan of
+    the whole document table — the generation token avoids that.
     """
 
     def __init__(
@@ -266,6 +301,14 @@ class DynamoDBCache(BaseCache):
     ) -> str:
         return f"__cache__#{_signature(namespace, top_k, filter)}#{_vec_key(query_vector)}"
 
+    @staticmethod
+    def _gen_pk(namespace: str) -> str:
+        return f"__cachegen__#{namespace}"
+
+    def _gen(self, namespace: str) -> int:
+        resp = self._table.get_item(Key={"pk": self._gen_pk(namespace)})
+        return int(resp.get("Item", {}).get("gen", 0))
+
     def get(
         self,
         namespace: str,
@@ -273,9 +316,7 @@ class DynamoDBCache(BaseCache):
         top_k: int,
         filter: MetadataFilter | None,
     ) -> list[SearchResult] | None:
-        resp = self._table.get_item(
-            Key={"pk": self._pk(namespace, query_vector, top_k, filter)}
-        )
+        resp = self._table.get_item(Key={"pk": self._pk(namespace, query_vector, top_k, filter)})
         item = resp.get("Item")
         if not item:
             self.misses += 1
@@ -283,6 +324,9 @@ class DynamoDBCache(BaseCache):
         if item.get("ttl") and int(item["ttl"]) < int(time.time()):
             self.misses += 1
             return None  # expired but not yet reaped
+        if int(item.get("gen", 0)) != self._gen(namespace):
+            self.misses += 1
+            return None  # invalidated by a write to this namespace
         self.hits += 1
         return _deserialize(item["results"])
 
@@ -299,8 +343,18 @@ class DynamoDBCache(BaseCache):
             Item={
                 "pk": self._pk(namespace, query_vector, top_k, filter),
                 "kind": "querycache",
+                "gen": self._gen(namespace),
                 "results": _serialize(results),
                 "ttl": int(time.time()) + self.ttl_seconds + jitter,
+            }
+        )
+
+    def invalidate(self, namespace: str) -> None:
+        self._table.put_item(
+            Item={
+                "pk": self._gen_pk(namespace),
+                "kind": "cachegen",
+                "gen": time.time_ns(),
             }
         )
 
@@ -332,7 +386,10 @@ class RedisCache(BaseCache):
         top_k: int,
         filter: MetadataFilter | None,
     ) -> str:
-        return f"dynavec:{_signature(namespace, top_k, filter)}:{_vec_key(query_vector)}"
+        # the literal namespace sits in the key so invalidate() can SCAN a prefix
+        return (
+            f"dynavec:{namespace}:{_signature(namespace, top_k, filter)}:{_vec_key(query_vector)}"
+        )
 
     def get(
         self,
@@ -361,6 +418,11 @@ class RedisCache(BaseCache):
             _serialize(results),
             ex=self.ttl_seconds,
         )
+
+    def invalidate(self, namespace: str) -> None:
+        keys = list(self._r.scan_iter(match=f"dynavec:{_glob_escape(namespace)}:*"))
+        if keys:
+            self._r.delete(*keys)
 
 
 def warm_cache(
@@ -403,7 +465,5 @@ def warm_cache(
             "RedisCache / DynamoDBCache) to Dynavec(...) before calling warm_cache()."
         )
     for query in queries:
-        client.search(
-            query, namespace=namespace, top_k=top_k, use_cache=True, **search_kwargs
-        )
+        client.search(query, namespace=namespace, top_k=top_k, use_cache=True, **search_kwargs)
     return len(queries)

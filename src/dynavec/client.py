@@ -44,6 +44,7 @@ from .credentials import AWSCredentials, resolve_session
 from .embeddings.base import Embedder
 from .exceptions import (
     ConfigurationError,
+    ConflictError,
     DimensionMismatchError,
     MissingDependencyError,
     NotFoundError,
@@ -249,9 +250,7 @@ class Dynavec:
         for d in docs:
             vector = d.vector
             if vector is None:
-                raise ConfigurationError(
-                    f"Embedder did not return a vector for document {d.id!r}."
-                )
+                raise ConfigurationError(f"Embedder did not return a vector for document {d.id!r}.")
             if len(vector) != self.config.dimension:
                 raise DimensionMismatchError(
                     f"Document {d.id!r} vector has dimension {len(vector)}, "
@@ -286,6 +285,10 @@ class Dynavec:
             tasks.append(partial(self._docs.put_many, namespace, ddb_chunk))
         self._run_parallel(tasks)
 
+    def _invalidate_cache(self, namespace: str) -> None:
+        if self._cache is not None and self.config.cache_invalidate_on_write:
+            self._cache.invalidate(namespace)
+
     def upsert(
         self,
         documents: Sequence[Document | dict[str, Any]] | None = None,
@@ -304,6 +307,7 @@ class Dynavec:
         self._write(namespace, s3_payload, ddb_payload)
         if self._hot is not None:
             self._hot.insert_many(namespace, hot_payload)
+        self._invalidate_cache(namespace)
         return UpsertResult(count=len(ids), ids=ids)
 
     def update(
@@ -317,17 +321,27 @@ class Dynavec:
         merge_metadata: bool = True,
         transform: TransformSpec | None = None,
         upsert_if_missing: bool = False,
+        expected_version: int | None = None,
     ) -> UpsertResult:
         """Update an existing document's text, vector, and/or metadata.
 
         Read-modify-write: metadata is merged by default; the vector is re-derived
         only when text changes (and an embedder exists) or a new vector is given,
         otherwise the stored vector is preserved.
+
+        The write is conditional on the document's version, so a concurrent
+        update is never silently overwritten: if the document changed since it
+        was read, :class:`ConflictError` is raised and nothing is written. Pass
+        ``expected_version`` (the ``version`` from an earlier update's result)
+        to also detect changes made since *your* last read. The returned
+        :class:`UpsertResult` carries the new ``version``.
         """
-        existing = self._docs.get_many(namespace, [id]).get(id)
+        existing = self._docs.get_versioned(namespace, id)
         if existing is None and not upsert_if_missing:
             raise NotFoundError(f"Document {id!r} not found in namespace {namespace!r}.")
-        existing = existing or {"text": None, "metadata": {}}
+        existing = existing or {"text": None, "metadata": {}, "version": 0}
+        if expected_version is not None and existing["version"] != expected_version:
+            raise ConflictError(id, namespace, expected_version)
 
         new_text = text if text is not None else existing.get("text")
 
@@ -360,10 +374,17 @@ class Dynavec:
         s3_payload, ddb_payload, ids, hot_payload = self._prepare(
             [doc], namespace, auto_metadata=False, transform=transform
         )
-        self._write(namespace, s3_payload, ddb_payload)
+        # The conditional DynamoDB write goes first: on a conflict it raises
+        # before S3 Vectors or the hot tier are touched.
+        ((_, ddb_text, ddb_meta),) = ddb_payload
+        version = self._docs.put_versioned(
+            namespace, id, ddb_text, ddb_meta, expected_version=existing["version"]
+        )
+        self._vectors.put_vectors(s3_payload)
         if self._hot is not None:
             self._hot.insert_many(namespace, hot_payload)
-        return UpsertResult(count=1, ids=ids)
+        self._invalidate_cache(namespace)
+        return UpsertResult(count=1, ids=ids, version=version)
 
     # ---------------------------------------------------------------- read path
     @overload
@@ -806,13 +827,13 @@ class Dynavec:
                 "rerank",
             ) from exc
 
-        cross_encoder = self._cross_encoder
-        if cross_encoder is None:
-            cross_encoder = CrossEncoder(self.config.cross_encoder_model)
-            self._cross_encoder = cross_encoder
+        encoder = self._cross_encoder
+        if encoder is None:
+            encoder = CrossEncoder(self.config.cross_encoder_model)
+            self._cross_encoder = encoder
 
         pairs = [(query, result.text) for result in results]
-        scores = cross_encoder.predict(pairs)
+        scores = encoder.predict(pairs)
 
         reranked = sorted(
             zip(results, scores),
@@ -952,12 +973,21 @@ class Dynavec:
         With ``explain=True``, each item is an ``ExplainedSearchResult``.
         """
         if explain:
+
             def explained_search(query: str) -> ExplainedSearchResult:
                 return self.search(
-                    query, top_k=top_k, namespace=namespace, explain=True,
-                    vector=vector, filter=filter, rescore=rescore, rerank=rerank,
-                    mmr_lambda=mmr_lambda, include_vectors=include_vectors,
-                    use_cache=use_cache, normalize_scores=normalize_scores,
+                    query,
+                    top_k=top_k,
+                    namespace=namespace,
+                    explain=True,
+                    vector=vector,
+                    filter=filter,
+                    rescore=rescore,
+                    rerank=rerank,
+                    mmr_lambda=mmr_lambda,
+                    include_vectors=include_vectors,
+                    use_cache=use_cache,
+                    normalize_scores=normalize_scores,
                 )
 
             explained_futures = [self._executor.submit(explained_search, q) for q in queries]
@@ -965,10 +995,18 @@ class Dynavec:
 
         def plain_search(query: str) -> list[SearchResult]:
             return self.search(
-                query, top_k=top_k, namespace=namespace, explain=False,
-                vector=vector, filter=filter, rescore=rescore, rerank=rerank,
-                mmr_lambda=mmr_lambda, include_vectors=include_vectors,
-                use_cache=use_cache, normalize_scores=normalize_scores,
+                query,
+                top_k=top_k,
+                namespace=namespace,
+                explain=False,
+                vector=vector,
+                filter=filter,
+                rescore=rescore,
+                rerank=rerank,
+                mmr_lambda=mmr_lambda,
+                include_vectors=include_vectors,
+                use_cache=use_cache,
+                normalize_scores=normalize_scores,
             )
 
         futures = [self._executor.submit(plain_search, q) for q in queries]
@@ -1203,6 +1241,50 @@ class Dynavec:
                 break
         return [e for e in visited if e != entity_id]
 
+    def graph_shortest_path(
+        self,
+        src_entity_id: str,
+        dst_entity_id: str,
+        *,
+        namespace: str = "default",
+        relation: str | None = None,
+        hops: int = 10,
+    ) -> list[str]:
+        # Use BFS to find the shortest path between two graph entities
+        # within the given hop limit.
+        # Returns the path if the destination is reachable; otherwise returns an empty list.
+
+        if src_entity_id == dst_entity_id:
+            return [src_entity_id]
+
+        visited = {src_entity_id}
+        frontier = [src_entity_id]
+
+        shortest_path_for_node = {src_entity_id: [src_entity_id]}
+
+        for _ in range(hops):
+            nxt = []
+
+            for node in frontier:
+                for nb in self.graph.neighbors(namespace, node, relation):
+                    if nb in visited:
+                        continue
+
+                    visited.add(nb)
+                    nxt.append(nb)
+
+                    shortest_path_for_node[nb] = shortest_path_for_node[node] + [nb]
+
+                    if nb == dst_entity_id:
+                        return shortest_path_for_node[nb]
+
+            frontier = nxt
+
+            if not frontier:
+                break
+
+        return []
+
     def graph_search(
         self,
         query: str | None = None,
@@ -1316,6 +1398,7 @@ class Dynavec:
         )
         if self._hot is not None:
             self._hot.delete(namespace, ids)
+        self._invalidate_cache(namespace)
 
     # ------------------------------------------------------------- hot tier
     def warm(self, namespace: str = "default") -> int:

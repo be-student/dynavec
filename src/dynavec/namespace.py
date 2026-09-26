@@ -65,6 +65,47 @@ class NamespaceView:
             )
         return cast(list[SearchResult], self._db.search(query, namespace=self._ns, **kw))
 
+    @overload
+    def search_many(
+        self,
+        queries: list[str],
+        *,
+        top_k: int = 10,
+        explain: Literal[False] = False,
+        **kw: Any,
+    ) -> list[list[SearchResult]]: ...
+
+    @overload
+    def search_many(
+        self,
+        queries: list[str],
+        *,
+        top_k: int = 10,
+        explain: Literal[True],
+        **kw: Any,
+    ) -> list[ExplainedSearchResult]: ...
+
+    @overload
+    def search_many(
+        self,
+        queries: list[str],
+        *,
+        top_k: int = 10,
+        explain: bool,
+        **kw: Any,
+    ) -> list[list[SearchResult]] | list[ExplainedSearchResult]: ...
+
+    def search_many(
+        self,
+        queries: list[str],
+        *,
+        top_k: int = 10,
+        explain: bool = False,
+        **kw: Any,
+    ) -> list[list[SearchResult]] | list[ExplainedSearchResult]:
+        """Run several queries concurrently, pinned to this namespace."""
+        return self._db.search_many(queries, top_k=top_k, namespace=self._ns, explain=explain, **kw)
+
     def search_stream(self, query: str | None = None, **kw: Any) -> Iterator[SearchResult]:
         yield from self._db.search_stream(query, namespace=self._ns, **kw)
 
